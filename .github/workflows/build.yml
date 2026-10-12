@@ -20,6 +20,12 @@ jobs:
       with:
         fetch-depth: 2
 
+    - name: 'Register repository as a Homebrew tap'
+      run: |
+        TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
+        mkdir -p "$(dirname "$TAP_DIR")"
+        ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
+
     - name: 'Build package and create bottle'
       run: |
         # Identify which formula(s) were added or changed in the triggering commit
@@ -38,8 +44,8 @@ jobs:
           echo "=========================================="
           
           # Build using Intel-based Homebrew
-          /usr/local/bin/brew install --build-bottle "Formula/$FORMULA_NAME.rb"
-          /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/latest-build" --json "Formula/$FORMULA_NAME.rb"
+          /usr/local/bin/brew install --build-bottle "jaewoook/nal/$FORMULA_NAME"
+          /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/latest-build" --json "jaewoook/nal/$FORMULA_NAME"
         done
 
         # Merge generated bottle metadata into formula file(s)
