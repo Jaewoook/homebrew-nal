@@ -7,50 +7,117 @@ on:
       - 'Formula/**'
       - 'Patches/**'
   workflow_dispatch:
+    inputs:
+      formula:
+        description: 'Specific formula to build (e.g. "xz", "gcc", "llvm", or "all"). Multiple formulas can be separated by comma or space.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: self-hosted
-    
+  detect:
+    name: Detect Formulas to Build
+    runs-on: ubuntu-latest
+    outputs:
+      formulas: ${{ steps.detect.outputs.formulas }}
+      count: ${{ steps.detect.outputs.count }}
     steps:
-    - name: 'Checkout'
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-    - name: 'Register repository as a Homebrew tap'
-      run: |
-        TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
-        mkdir -p "$(dirname "$TAP_DIR")"
-        ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
+      - name: Determine target formulas
+        id: detect
+        run: |
+          FORMULA_INPUT="${{ github.event.inputs.formula }}"
+          TARGETS=()
 
-    - name: 'Build package and create bottle'
-      env:
-        HOMEBREW_NO_AUTO_UPDATE: '1'
-        HOMEBREW_NO_AUTOREMOVE: '1'
-        HOMEBREW_NO_INSTALL_CLEANUP: '1'
-        NONINTERACTIVE: '1'
-      run: |
-        # Identify which formula(s) were added or changed in the triggering commit (including patches)
-        CHANGED_FORMULAS=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
-        
-        # Fallback if no commit diff is available (e.g. manual dispatch or initial commit)
-        if [ -z "$CHANGED_FORMULAS" ]; then
-          CHANGED_FORMULAS=$(find Formula -maxdepth 1 -name "*.rb" -exec basename {} .rb \;)
-        fi
-        
-        echo "Formulas to build: $CHANGED_FORMULAS"
-        
-        for FORMULA_NAME in $CHANGED_FORMULAS; do
+          if [ -n "$FORMULA_INPUT" ]; then
+            if [ "$FORMULA_INPUT" = "all" ]; then
+              for f in Formula/*.rb; do
+                [ -f "$f" ] || continue
+                TARGETS+=("$(basename "$f" .rb)")
+              done
+            else
+              CLEANED=$(echo "$FORMULA_INPUT" | tr ',' ' ')
+              for name in $CLEANED; do
+                if [ -f "Formula/${name}.rb" ]; then
+                  TARGETS+=("$name")
+                else
+                  echo "::warning::Formula Formula/${name}.rb not found, skipping."
+                fi
+              done
+            fi
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            if [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              CHANGED=$(git diff --name-only "${{ github.event.before }}" HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
+            else
+              CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
+            fi
+
+            for name in $CHANGED; do
+              if [ -f "Formula/${name}.rb" ]; then
+                TARGETS+=("$name")
+              fi
+            done
+          fi
+
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            JSON_ARRAY="[]"
+            COUNT=0
+          else
+            JSON_ARRAY=$(printf '%s\n' "${TARGETS[@]}" | jq -R . | jq -s -c .)
+            COUNT=${#TARGETS[@]}
+          fi
+
+          echo "Formulas to build: $JSON_ARRAY (count: $COUNT)"
+          echo "formulas=$JSON_ARRAY" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build Bottle (${{ matrix.formula }})
+    needs: detect
+    if: needs.detect.outputs.count != '0' && needs.detect.outputs.count != ''
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        formula: ${{ fromJson(needs.detect.outputs.formulas) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Register repository as a Homebrew tap
+        run: |
+          TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
+
+      - name: Build package and create bottle
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_AUTOREMOVE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+          NONINTERACTIVE: '1'
+        run: |
+          FORMULA_NAME="${{ matrix.formula }}"
           echo "=========================================="
-          echo "Building $FORMULA_NAME..."
+          echo "Building bottle for $FORMULA_NAME..."
           echo "=========================================="
-          
-          # If formula is already installed (from homebrew/core or an earlier run),
-          # uninstall it first to prevent cross-tap conflicts and ensure a clean bottle build
+
+          # Clean any lingering bottle archives from workspace
+          rm -f *.bottle.tar.gz *.bottle.json
+
+          # Uninstall existing formula if present to avoid cross-tap conflicts
           if /usr/local/bin/brew list --formula --versions "$FORMULA_NAME" >/dev/null 2>&1; then
             echo "Uninstalling existing $FORMULA_NAME to prevent tap conflict..."
             /usr/local/bin/brew uninstall --ignore-dependencies "$FORMULA_NAME" || true
@@ -62,38 +129,46 @@ jobs:
           # Build formula for bottling, bypassing unbottled dependencies check
           /usr/local/bin/brew install --build-bottle --ignore-dependencies "jaewoook/nal/$FORMULA_NAME"
           /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/latest-build" --json "jaewoook/nal/$FORMULA_NAME"
-        done
 
-        # Merge generated bottle metadata into formula file(s)
-        if compgen -G "*.bottle.json" > /dev/null; then
-          echo "Merging bottle information into formula(s)..."
-          /usr/local/bin/brew bottle --merge --write --no-commit *.bottle.json
-        fi
-        
-    - name: Upload Bottle file to GitHub Releases
-      uses: softprops/action-gh-release@v2
-      with:
-        files: "*.tar.gz"
-        tag_name: "latest-build"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Locate and merge bottle JSON metadata into formula
+          BOTTLE_JSON=$(ls ${FORMULA_NAME}--*.bottle.json 2>/dev/null | head -n 1 || true)
+          if [ -n "$BOTTLE_JSON" ] && [ -f "$BOTTLE_JSON" ]; then
+            echo "Merging bottle information from $BOTTLE_JSON into Formula/${FORMULA_NAME}.rb..."
+            /usr/local/bin/brew bottle --merge --write --no-commit "$BOTTLE_JSON"
+          else
+            echo "::error::Bottle JSON file not found for $FORMULA_NAME!"
+            exit 1
+          fi
 
-    - name: Commit updated formula bottle block
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add Formula/*.rb
-        if ! git diff --staged --quiet; then
-          git commit -m "Add bottle block for prebuilt binaries [skip ci]"
+      - name: Upload Bottle file to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "${{ matrix.formula }}--*.tar.gz"
+          tag_name: "latest-build"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit updated formula bottle block
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Pull latest main to incorporate any commits pushed by prior matrix jobs
           git pull --rebase origin main
-          git push origin main
-        fi
 
-    - name: Clean up build artifacts and caches
-      if: always()
-      run: |
-        echo "Cleaning up generated bottle archives from workspace..."
-        rm -f *.tar.gz *.json
-        
-        echo "Pruning Homebrew cache and obsolete Cellar versions..."
-        /usr/local/bin/brew cleanup --prune=all -s
+          git add "Formula/${{ matrix.formula }}.rb"
+          if ! git diff --staged --quiet; then
+            git commit -m "Add bottle block for ${{ matrix.formula }} [skip ci]"
+            git push origin main
+          else
+            echo "No changes to commit for ${{ matrix.formula }}."
+          fi
+
+      - name: Clean up build artifacts and caches
+        if: always()
+        run: |
+          echo "Cleaning up generated bottle archives from workspace..."
+          rm -f *.tar.gz *.json
+          
+          echo "Pruning Homebrew cache and obsolete Cellar versions..."
+          /usr/local/bin/brew cleanup --prune=all -s

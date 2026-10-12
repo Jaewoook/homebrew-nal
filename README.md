@@ -52,34 +52,41 @@ flowchart TD
     A["Upstream Homebrew/homebrew-core"] -->|Monthly cron / manual dispatch| B["sync-upstream.yml"]
     B -->|scripts/sync_formulas.sh| C["Update Formula/*.rb & .formula-versions.json"]
     C -->|Git push via SYNC_PAT| D["origin/main"]
-    D -->|Push to Formula/**| E["build.yml (Self-Hosted Runner)"]
-    E --> F["Register tap symlink in /usr/local/Homebrew"]
-    F --> G["brew install --only-dependencies"]
-    G --> H["brew install --build-bottle --ignore-dependencies"]
-    H --> I["brew bottle --root-url=... --json"]
-    I --> J["Upload *.tar.gz to GitHub Releases (latest-build)"]
-    J --> K["brew bottle --merge into Formula/*.rb"]
-    K --> L["git push bottle block to main [skip ci]"]
-    L --> M["Clean up caches & archives"]
+    D -->|Push to Formula/** or workflow_dispatch| E["build.yml: Detect Job"]
+    E -->|Matrix per formula fail-fast: false| F["build.yml: Build Job (formula)"]
+    F --> G["Register tap symlink in /usr/local/Homebrew"]
+    G --> H["brew install --only-dependencies"]
+    H --> I["brew install --build-bottle --ignore-dependencies"]
+    I --> J["brew bottle --root-url=... --json"]
+    J --> K["Upload formula *.tar.gz to GitHub Releases"]
+    K --> L["brew bottle --merge into Formula/formula.rb"]
+    L --> M["git push bottle block to main [skip ci]"]
+    M --> N["Clean up caches & archives"]
 ```
 
 ### 1. Formula Synchronization (`.github/workflows/sync-upstream.yml`)
 - **Trigger**: Runs on a schedule on the 1st of every month at 18:00 UTC (`0 18 1 * *`), or manually via `workflow_dispatch`.
-- **Action**: Executes [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh), which checks the Homebrew Formula API (`formulae.brew.sh`), compares versions against [`.formula-versions.json`](.formula-versions.json), downloads the latest `.rb` definition, preserves tap metadata, and commits changes.
+- **Action**: Executes [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh), which checks the Homebrew Formula API (`formulae.brew.sh`), compares versions against [`.formula-versions.json`](.formula-versions.json), downloads the latest `.rb` definition, downloads any referenced upstream patches into `Patches/`, and commits changes.
 - **Authentication**: Uses a repository secret `SYNC_PAT` so pushes to `main` trigger downstream workflows.
 
 ### 2. Bottle Build & Release (`.github/workflows/build.yml`)
-- **Trigger**: Pushes modifying `Formula/**` or manual `workflow_dispatch`.
+- **Trigger**:
+  - **Push**: Triggered on changes to `Formula/**` or `Patches/**`. Only changed formulas are targeted for building.
+  - **Manual (`workflow_dispatch`)**: Allows selecting specific formulas to build via the `formula` input (e.g., `xz`, `gcc`, `llvm`, multiple separated by comma/space, or `all`).
 - **Runner**: Runs on a self-hosted macOS runner with Intel Homebrew (`/usr/local/bin/brew`).
-- **Steps**:
+- **Per-Formula Isolation (`strategy.fail-fast: false`)**:
+  Formulas are built sequentially in an isolated matrix. For each target formula:
   1. Symlinks the checkout directory to `$(brew --repository)/Library/Taps/jaewoook/homebrew-nal`.
-  2. Resolves and installs build dependencies (`brew install --only-dependencies`).
-  3. Builds formulas for bottling (`brew install --build-bottle --ignore-dependencies`) to bypass upstream unbottled-dependency errors on Intel macOS.
-  4. Generates bottle packages and metadata (`brew bottle --json`).
-  5. Uploads `*.tar.gz` binaries to GitHub Releases under tag `latest-build`.
-  6. Merges updated bottle checksums into formula files (`brew bottle --merge --write`).
-  7. Commits the bottle block to `main` with `[skip ci]`.
-  8. Cleans up build artifacts and prunes Homebrew caches.
+  2. Uninstalls any pre-existing version to avoid cross-tap collisions.
+  3. Resolves and installs build dependencies (`brew install --only-dependencies`).
+  4. Builds the formula for bottling (`brew install --build-bottle --ignore-dependencies`).
+  5. Packages the bottle and metadata (`brew bottle --json`).
+  6. **Immediately uploads** the generated bottle archive (`.tar.gz`) to GitHub Releases (`latest-build`).
+  7. **Immediately commits & pushes** the updated bottle block back to `main` with `[skip ci]`.
+  8. Cleans up temporary archives and prunes Homebrew caches before the next formula begins.
+
+> [!NOTE]
+> Because each formula publishes and commits immediately upon successful compilation, if another formula later in the queue fails to build, already completed bottles and their formula commits remain safely preserved in releases and git history.
 
 ---
 
