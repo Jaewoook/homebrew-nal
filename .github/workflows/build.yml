@@ -27,6 +27,9 @@ jobs:
         ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
 
     - name: 'Build package and create bottle'
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+        NONINTERACTIVE: '1'
       run: |
         # Identify which formula(s) were added or changed in the triggering commit
         CHANGED_FORMULAS=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep '^Formula/.*\.rb$' | sed 's|^Formula/||;s|\.rb$||' || true)
@@ -43,8 +46,11 @@ jobs:
           echo "Building $FORMULA_NAME..."
           echo "=========================================="
           
-          # Build using Intel-based Homebrew
-          /usr/local/bin/brew install --build-bottle "jaewoook/nal/$FORMULA_NAME"
+          # Install dependencies first (allows source-building unbottled dependencies)
+          /usr/local/bin/brew install --only-dependencies "jaewoook/nal/$FORMULA_NAME"
+
+          # Build formula for bottling, bypassing unbottled dependencies check
+          /usr/local/bin/brew install --build-bottle --ignore-dependencies "jaewoook/nal/$FORMULA_NAME"
           /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/latest-build" --json "jaewoook/nal/$FORMULA_NAME"
         done
 
