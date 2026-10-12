@@ -4,5 +4,11 @@
     "revision": 1,
     "sha256": "796d77c319829e1accc6f0cf7ed7e47f4243d8ff994f4c52192d7f0aa2b59902",
     "last_updated": "2026-10-12T17:52:54Z"
+  },
+  "gcc": {
+    "version": "16.2.0",
+    "revision": 0,
+    "sha256": "f09c8035d0874fb1d8a2d7ca3464f8108273c4c532cec582d7b9f340aa544aa3",
+    "last_updated": "2026-10-12T17:52:56Z"
   }
 }
