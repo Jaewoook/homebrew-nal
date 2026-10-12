@@ -1,0 +1,32 @@
+name: Build and Release Bottle
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Formula/**'
+
+jobs:
+  build:
+    runs-on: self-hosted
+    
+    steps:
+    - name: 'Checkout'
+      uses: actions/checkout@v3
+
+    - name: 'Build package and create bottle'
+      run: |
+        FORMULA_NAME=$(ls Formula | head -n 1 | sed 's/.rb//')
+        echo "Building $FORMULA_NAME..."
+        
+        # Build using Intel-based Homebrew
+        /usr/local/bin/brew install --build-bottle Formula/$FORMULA_NAME.rb
+        /usr/local/bin/brew bottle Formula/$FORMULA_NAME.rb
+        
+    - name: Upload Bottle file to GitHub Releases
+      uses: softprops/action-gh-release@v1
+      with:
+        files: "*.tar.gz"
+        tag_name: "latest-build"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
