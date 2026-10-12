@@ -5,6 +5,10 @@ on:
     branches: [ main ]
     paths:
       - 'Formula/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -12,21 +16,62 @@ jobs:
     
     steps:
     - name: 'Checkout'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
 
     - name: 'Build package and create bottle'
       run: |
-        FORMULA_NAME=$(ls Formula | head -n 1 | sed 's/.rb//')
-        echo "Building $FORMULA_NAME..."
+        # Identify which formula(s) were added or changed in the triggering commit
+        CHANGED_FORMULAS=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep '^Formula/.*\.rb$' | sed 's|^Formula/||;s|\.rb$||' || true)
         
-        # Build using Intel-based Homebrew
-        /usr/local/bin/brew install --build-bottle Formula/$FORMULA_NAME.rb
-        /usr/local/bin/brew bottle Formula/$FORMULA_NAME.rb
+        # Fallback if no commit diff is available (e.g. manual dispatch or initial commit)
+        if [ -z "$CHANGED_FORMULAS" ]; then
+          CHANGED_FORMULAS=$(find Formula -maxdepth 1 -name "*.rb" -exec basename {} .rb \;)
+        fi
+        
+        echo "Formulas to build: $CHANGED_FORMULAS"
+        
+        for FORMULA_NAME in $CHANGED_FORMULAS; do
+          echo "=========================================="
+          echo "Building $FORMULA_NAME..."
+          echo "=========================================="
+          
+          # Build using Intel-based Homebrew
+          /usr/local/bin/brew install --build-bottle "Formula/$FORMULA_NAME.rb"
+          /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/latest-build" --json "Formula/$FORMULA_NAME.rb"
+        done
+
+        # Merge generated bottle metadata into formula file(s)
+        if compgen -G "*.bottle.json" > /dev/null; then
+          echo "Merging bottle information into formula(s)..."
+          /usr/local/bin/brew bottle --merge --write --no-commit *.bottle.json
+        fi
         
     - name: Upload Bottle file to GitHub Releases
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: "*.tar.gz"
         tag_name: "latest-build"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Commit updated formula bottle block
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Formula/*.rb
+        if ! git diff --staged --quiet; then
+          git commit -m "Add bottle block for prebuilt binaries [skip ci]"
+          git pull --rebase origin main
+          git push origin main
+        fi
+
+    - name: Clean up build artifacts and caches
+      if: always()
+      run: |
+        echo "Cleaning up generated bottle archives from workspace..."
+        rm -f *.tar.gz *.json
+        
+        echo "Pruning Homebrew cache and obsolete Cellar versions..."
+        /usr/local/bin/brew cleanup --prune=all -s
