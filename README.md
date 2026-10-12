@@ -33,6 +33,16 @@ brew install jaewoook/nal/llvm
 brew install jaewoook/nal/gcc
 ```
 
+> [!TIP]
+> **Switching from `homebrew/core`**:
+> If a formula was previously installed from `homebrew/core`, Homebrew disallows installing the same formula name from another tap simultaneously. To switch to this tap's prebuilt version:
+> ```bash
+> brew uninstall <formula>
+> brew install jaewoook/nal/<formula>
+> # Or directly switch taps:
+> brew reinstall jaewoook/nal/<formula>
+> ```
+
 ---
 
 ## Architecture & Workflow Sequence
