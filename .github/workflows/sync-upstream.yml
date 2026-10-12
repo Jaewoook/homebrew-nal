@@ -1,0 +1,55 @@
+name: Sync Upstream Formulas
+
+on:
+  schedule:
+    # Run monthly on the 1st of each month at 18:00 UTC (03:00 KST)
+    - cron: '0 18 1 * *'
+  workflow_dispatch:
+    inputs:
+      formulas:
+        description: 'Space-separated list of formula names to sync (e.g., "llvm gcc")'
+        required: false
+        default: 'llvm gcc'
+      force:
+        description: 'Force sync even if upstream and local versions match'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Check and Sync Formulas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate Personal Access Token (PAT)
+        run: |
+          if [ -z "${{ secrets.SYNC_PAT }}" ]; then
+            echo "::error::Secret SYNC_PAT is not set! A Personal Access Token (PAT) is required so git pushes can trigger downstream workflows (like build.yml). Please see setup instructions."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use SYNC_PAT instead of default GITHUB_TOKEN so git push triggers build.yml
+          token: ${{ secrets.SYNC_PAT }}
+          fetch-depth: 0
+
+      - name: Configure Git Author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync Formulas from Upstream
+        id: sync
+        env:
+          FORMULAS: ${{ inputs.formulas || 'llvm gcc' }}
+          FORCE_SYNC: ${{ inputs.force || 'false' }}
+          GIT_BRANCH: 'main'
+        run: |
+          chmod +x scripts/sync_formulas.sh
+          ./scripts/sync_formulas.sh --commit --push
