@@ -275,6 +275,21 @@ for FORMULA in $FORMULAS; do
   # Apply update
   mv "$TMP_RB" "$LOCAL_PATH"
 
+  # Fetch any patches referenced by the formula in Patches/
+  PATCH_FILES=$(grep -oE 'Patches/[^"'\'' ]+' "$LOCAL_PATH" 2>/dev/null || true)
+  if [[ -n "$PATCH_FILES" ]]; then
+    for PATCH_REL in $PATCH_FILES; do
+      PATCH_URL="${UPSTREAM_RAW_BASE}/${PATCH_REL}"
+      echo "  [PATCH] Downloading referenced patch: $PATCH_REL"
+      mkdir -p "$(dirname "$PATCH_REL")"
+      if curl -sSfL "$PATCH_URL" -o "$PATCH_REL"; then
+        echo "  [PATCH] Saved $PATCH_REL"
+      else
+        echo "  [WARN] Failed to download patch from $PATCH_URL" >&2
+      fi
+    done
+  fi
+
   # Update state JSON
   TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   TMP_STATE=$(mktemp)
@@ -292,6 +307,9 @@ for FORMULA in $FORMULAS; do
   if [[ "$AUTO_COMMIT" == "true" ]]; then
     echo "  [GIT] Committing changes for $FORMULA..."
     git add "$LOCAL_PATH" "$STATE_FILE"
+    if [[ -d "Patches" ]]; then
+      git add Patches
+    fi
 
     # Avoid committing if no staged changes
     if git diff --staged --quiet; then
