@@ -10,5 +10,11 @@
     "revision": 0,
     "sha256": "f09c8035d0874fb1d8a2d7ca3464f8108273c4c532cec582d7b9f340aa544aa3",
     "last_updated": "2026-10-12T17:52:56Z"
+  },
+  "xz": {
+    "version": "5.8.4",
+    "revision": 0,
+    "sha256": "e5b8bbf09dccb4a1f2ee333ed65b13ee773350a26735ef594ca859d2cf85248e",
+    "last_updated": "2026-10-12T20:54:02Z"
   }
 }
