@@ -52,5 +52,11 @@
     "revision": 0,
     "sha256": "2cf1319e1fd92cae6f58faf9248210dc878c265016fcc9b1e2864b8e30d83deb",
     "last_updated": "2026-10-13T06:15:23Z"
+  },
+  "sqlite": {
+    "version": "3.54.0",
+    "revision": 0,
+    "sha256": "bbee4887580736c1ff890e611fcb857440f5b80099dbf5ec0b1e6010df723250",
+    "last_updated": "2026-10-13T14:57:15Z"
   }
 }
