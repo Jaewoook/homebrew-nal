@@ -70,5 +70,11 @@
     "revision": 0,
     "sha256": "f4cae1e193a4c2a5a01cbeed469f26931b3b067cf22f5f505b97de46574128d7",
     "last_updated": "2026-10-13T15:22:21Z"
+  },
+  "git": {
+    "version": "2.56.0",
+    "revision": 1,
+    "sha256": "df39658f97fd2bb62ab681628d14c7e41b6c2dfbe220778c3d3b2712ff16b0a4",
+    "last_updated": "2026-10-13T23:56:26Z"
   }
 }
