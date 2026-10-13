@@ -153,12 +153,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Pull latest main to incorporate any commits pushed by prior matrix jobs
-          git pull --rebase origin main
-
           git add "Formula/${{ matrix.formula }}.rb"
           if ! git diff --staged --quiet; then
             git commit -m "Add bottle block for ${{ matrix.formula }} [skip ci]"
+            # Pull and rebase cleanly now that working tree is clean
+            git pull --rebase origin main
             git push origin main
           else
             echo "No changes to commit for ${{ matrix.formula }}."
