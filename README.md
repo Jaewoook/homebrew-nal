@@ -56,7 +56,7 @@ flowchart TD
     E -->|Matrix per formula fail-fast: false| F["build.yml: Build Job (formula)"]
     F --> G["Register tap symlink in /usr/local/Homebrew"]
     G --> H["brew install --only-dependencies"]
-    H --> I["brew install --build-bottle --ignore-dependencies"]
+    H --> I["brew install --build-bottle"]
     I --> J["brew bottle --root-url=... --json"]
     J --> K["Upload formula *.tar.gz to GitHub Releases"]
     K --> L["brew bottle --merge into Formula/formula.rb"]
@@ -79,7 +79,7 @@ flowchart TD
   1. Symlinks the checkout directory to `$(brew --repository)/Library/Taps/jaewoook/homebrew-nal`.
   2. Uninstalls any pre-existing version to avoid cross-tap collisions.
   3. Resolves and installs build dependencies (`brew install --only-dependencies`).
-  4. Builds the formula for bottling (`brew install --build-bottle --ignore-dependencies`).
+  4. Builds the formula for bottling (`brew install --build-bottle`).
   5. Packages the bottle and metadata (`brew bottle --json`).
   6. **Immediately uploads** the generated bottle archive (`.tar.gz`) to a dedicated GitHub Release tagged with the formula and version (e.g., `xz-5.8.4`).
   7. **Immediately commits & pushes** the updated bottle block back to `main` with `[skip ci]`.

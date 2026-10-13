@@ -107,6 +107,7 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_AUTOREMOVE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
+          HOMEBREW_NO_ASK: '1'
           NONINTERACTIVE: '1'
         run: |
           FORMULA_NAME="${{ matrix.formula }}"
@@ -134,8 +135,8 @@ jobs:
           echo "RELEASE_TITLE=${RELEASE_TITLE}" >> "$GITHUB_ENV"
           echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 
-          # Build formula for bottling, bypassing unbottled dependencies check
-          /usr/local/bin/brew install --build-bottle --ignore-dependencies "jaewoook/nal/$FORMULA_NAME"
+          # Build formula for bottling
+          /usr/local/bin/brew install --build-bottle "jaewoook/nal/$FORMULA_NAME"
           /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_TAG}" --json "jaewoook/nal/$FORMULA_NAME"
 
           # Locate and merge bottle JSON metadata into formula
