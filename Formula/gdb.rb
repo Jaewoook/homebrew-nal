@@ -9,11 +9,9 @@ class Gdb < Formula
   head "https://sourceware.org/git/binutils-gdb.git", branch: "master"
 
   bottle do
-    sha256 arm64_golden_gate: "73783de1676450dfa84775af3b1f21a156f58cab83afae2ee830ee0df3b4d398"
-    sha256 arm64_tahoe:       "0acd0ff7cef293eb7c9d188c424de3e32c35daa0d1ce406e47a438fab70e2f27"
-    sha256 arm64_sequoia:     "b9f623abb1770948ba8cfa3e60ce42fb255642c325cf19df50dde9c85539babb"
-    sha256 arm64_linux:       "9e95d6f677e130979eea1a1537b97f3c69aaa8365b50d10cfffa3a2f70ea8e4c"
-    sha256 x86_64_linux:      "1a8f84a44be494e949ad98966ebe44dc149f9dd30d69cd79a5443c267573c526"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gdb-18.1"
+    rebuild 1
+    sha256 sequoia: "0e6b56eaf6936ace8a3d981dbe42e81c0a06646cad8160708ef3ebe17033ec97"
   end
 
   depends_on "pkgconf" => :build
