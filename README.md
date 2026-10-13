@@ -81,7 +81,7 @@ flowchart TD
   3. Resolves and installs build dependencies (`brew install --only-dependencies`).
   4. Builds the formula for bottling (`brew install --build-bottle --ignore-dependencies`).
   5. Packages the bottle and metadata (`brew bottle --json`).
-  6. **Immediately uploads** the generated bottle archive (`.tar.gz`) to GitHub Releases (`latest-build`).
+  6. **Immediately uploads** the generated bottle archive (`.tar.gz`) to a dedicated GitHub Release tagged with the formula and version (e.g., `xz-5.8.4`).
   7. **Immediately commits & pushes** the updated bottle block back to `main` with `[skip ci]`.
   8. Cleans up temporary archives and prunes Homebrew caches before the next formula begins.
 
