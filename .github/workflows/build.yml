@@ -26,7 +26,7 @@ jobs:
       count: ${{ steps.detect.outputs.count }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -91,7 +91,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -149,16 +149,8 @@ jobs:
             exit 1
           fi
 
-      - name: Upload Bottle file to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          files: "${{ matrix.formula }}--*.tar.gz"
-          tag_name: "${{ env.RELEASE_TAG }}"
-          name: "${{ env.RELEASE_TITLE }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Commit updated formula bottle block
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -172,6 +164,18 @@ jobs:
           else
             echo "No changes to commit for ${{ matrix.formula }}."
           fi
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Bottle file to GitHub Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          files: "${{ matrix.formula }}--*.tar.gz"
+          tag_name: "${{ env.RELEASE_TAG }}"
+          name: "${{ env.RELEASE_TITLE }}"
+          target_commitish: "${{ steps.commit.outputs.commit_sha }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clean up build artifacts and caches
         if: always()

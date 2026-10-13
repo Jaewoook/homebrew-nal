@@ -33,8 +33,9 @@ jobs:
           fi
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
+          ref: main
           # Use SYNC_PAT instead of default GITHUB_TOKEN so git push triggers build.yml
           token: ${{ secrets.SYNC_PAT }}
           fetch-depth: 0

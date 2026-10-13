@@ -326,7 +326,7 @@ for FORMULA in $FORMULAS; do
       if [[ "$AUTO_PUSH" == "true" ]]; then
         echo "  [GIT] Pulling latest changes and pushing commit to remote branch $GIT_BRANCH..."
         git pull --rebase origin "$GIT_BRANCH"
-        git push origin "$GIT_BRANCH"
+        git push origin HEAD:"$GIT_BRANCH"
         echo "  [GIT] Successfully pushed commit!"
       fi
     fi
