@@ -64,5 +64,11 @@
     "revision": 2,
     "sha256": "720a0b82acbc9f97fe2950c6b919ea5e9383b491c8ef7b7f06a7f3e16c9b8c07",
     "last_updated": "2026-10-13T15:17:34Z"
+  },
+  "fzf": {
+    "version": "0.74.5",
+    "revision": 0,
+    "sha256": "f4cae1e193a4c2a5a01cbeed469f26931b3b067cf22f5f505b97de46574128d7",
+    "last_updated": "2026-10-13T15:22:21Z"
   }
 }
