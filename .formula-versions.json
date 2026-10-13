@@ -58,5 +58,11 @@
     "revision": 0,
     "sha256": "bbee4887580736c1ff890e611fcb857440f5b80099dbf5ec0b1e6010df723250",
     "last_updated": "2026-10-13T14:57:15Z"
+  },
+  "gnutls": {
+    "version": "3.8.13",
+    "revision": 2,
+    "sha256": "720a0b82acbc9f97fe2950c6b919ea5e9383b491c8ef7b7f06a7f3e16c9b8c07",
+    "last_updated": "2026-10-13T15:17:34Z"
   }
 }
