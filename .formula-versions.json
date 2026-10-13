@@ -16,5 +16,11 @@
     "revision": 0,
     "sha256": "e5b8bbf09dccb4a1f2ee333ed65b13ee773350a26735ef594ca859d2cf85248e",
     "last_updated": "2026-10-12T20:54:02Z"
+  },
+  "gh": {
+    "version": "2.102.0",
+    "revision": 0,
+    "sha256": "a55e1dbfe432c75de79a0eae6baa6294941a603e22789465084b7ce639e2a3ef",
+    "last_updated": "2026-10-13T02:35:01Z"
   }
 }
