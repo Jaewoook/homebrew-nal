@@ -16,11 +16,9 @@ class Sqlite < Formula
   end
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "0420684ae4e97f1829ba9677b1a7bfac84c07e84e6fc48416024598d7198761a"
-    sha256 cellar: :any, arm64_tahoe:       "7d95089d3dd3abf4aec197d1f91964d14d6481713e55411b9838ea5e969588dc"
-    sha256 cellar: :any, arm64_sequoia:     "b36720af4c3db32f5d1f16ee6129018bdde236cd8f7e6189092b52c20d31c5ca"
-    sha256 cellar: :any, arm64_linux:       "5995bfea48ddb4407ceb0dbcb46c957547cde2f200b7db3581e0707fe37274dd"
-    sha256 cellar: :any, x86_64_linux:      "0e841d8379a66a12d41215296068ca49c577fb41cca7c39e16db002d809fdb57"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/sqlite-3.54.0"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "b43934465159225fc6fddb73aa68c84b9602b41b92b3ae75f14bcdd16d14b1cd"
   end
 
   keg_only :provided_by_macos
