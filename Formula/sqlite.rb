@@ -15,8 +15,6 @@ class Sqlite < Formula
     end
   end
 
-  no_autobump! because: :incompatible_version_format
-
   bottle do
     sha256 cellar: :any, arm64_golden_gate: "0420684ae4e97f1829ba9677b1a7bfac84c07e84e6fc48416024598d7198761a"
     sha256 cellar: :any, arm64_tahoe:       "7d95089d3dd3abf4aec197d1f91964d14d6481713e55411b9838ea5e969588dc"

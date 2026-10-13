@@ -197,6 +197,11 @@ for FORMULA in $FORMULAS; do
     continue
   fi
 
+  # Strip directives that are only valid in official Homebrew taps (e.g. no_autobump!)
+  SANITIZED_TMP=$(mktemp)
+  grep -v -E '^[[:space:]]*no_autobump!' "$TMP_RB" > "$SANITIZED_TMP"
+  mv "$SANITIZED_TMP" "$TMP_RB"
+
   UPSTREAM_SHA=$(calc_sha256 "$TMP_RB")
 
   # 2. Fetch upstream version & revision from Homebrew API

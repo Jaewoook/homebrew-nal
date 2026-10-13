@@ -56,7 +56,7 @@
   "sqlite": {
     "version": "3.54.0",
     "revision": 0,
-    "sha256": "bbee4887580736c1ff890e611fcb857440f5b80099dbf5ec0b1e6010df723250",
+    "sha256": "7743f585566847c2bbcd39102713745759bfb1e1f30a4384ac2362fb475e88d3",
     "last_updated": "2026-10-13T14:57:15Z"
   },
   "gnutls": {
