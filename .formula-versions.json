@@ -76,5 +76,11 @@
     "revision": 1,
     "sha256": "df39658f97fd2bb62ab681628d14c7e41b6c2dfbe220778c3d3b2712ff16b0a4",
     "last_updated": "2026-10-13T23:56:26Z"
+  },
+  "jq": {
+    "version": "1.8.2",
+    "revision": 0,
+    "sha256": "0081a3a8d8afaa165b4bfa9b222723916b56f4d04b975d7aad35e8cdad0b0296",
+    "last_updated": "2026-10-13T23:56:28Z"
   }
 }
