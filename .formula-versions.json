@@ -34,5 +34,11 @@
     "revision": 0,
     "sha256": "08a9156d1191b8e5968f9acde0acb0cfd56f3abf5aefac42ca6a46d24539db16",
     "last_updated": "2026-10-13T02:35:04Z"
+  },
+  "go": {
+    "version": "1.27.2",
+    "revision": 0,
+    "sha256": "63759f6bf0e7064f939af3b22b20ac81cab1f1ccd51aa12ecf5e082df86ee190",
+    "last_updated": "2026-10-13T02:35:06Z"
   }
 }
