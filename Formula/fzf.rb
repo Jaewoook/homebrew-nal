@@ -8,11 +8,9 @@ class Fzf < Formula
   head "https://github.com/junegunn/fzf.git", branch: "master"
 
   bottle do
-    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "17d944658dd8fb782733090891d923cf28815a6e93f8aec35ba07fec1fedb542"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:       "17d944658dd8fb782733090891d923cf28815a6e93f8aec35ba07fec1fedb542"
-    sha256 cellar: :any_skip_relocation, arm64_sequoia:     "17d944658dd8fb782733090891d923cf28815a6e93f8aec35ba07fec1fedb542"
-    sha256 cellar: :any_skip_relocation, arm64_linux:       "0749697638cee94fd9a1ffe0bc11d54154efa4eef051bbaef2b1868f064fa6c8"
-    sha256 cellar: :any_skip_relocation, x86_64_linux:      "af83752b94daa51fc490068921234d3609cfc8e37650696bf00743b558d6c522"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/fzf-0.74.5"
+    rebuild 1
+    sha256 cellar: :any_skip_relocation, sequoia: "f00bf4f2c1e3c90d7f0b4d493a6b61dafbb35b7b0b208541d954ea5f9b9c7ce7"
   end
 
   depends_on "go" => :build
