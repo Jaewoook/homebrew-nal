@@ -22,5 +22,11 @@
     "revision": 0,
     "sha256": "a55e1dbfe432c75de79a0eae6baa6294941a603e22789465084b7ce639e2a3ef",
     "last_updated": "2026-10-13T02:35:01Z"
+  },
+  "gnupg": {
+    "version": "2.5.24",
+    "revision": 0,
+    "sha256": "63dafd5451767fc2df1b0be02138ca415c685de0196f43f9277c468104a7f402",
+    "last_updated": "2026-10-13T02:35:02Z"
   }
 }
