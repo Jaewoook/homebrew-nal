@@ -88,5 +88,11 @@
     "revision": 0,
     "sha256": "2c44e237622fe2fa6ffc119a6f37dd1077e4f80a15285c9f81d8c94d00831114",
     "last_updated": "2026-10-13T23:56:29Z"
+  },
+  "mole": {
+    "version": "1.59.1",
+    "revision": 0,
+    "sha256": "d5cc61ccc0a8643be867dd1aabee7069d22e549b90c0999ea8c5a945940452cb",
+    "last_updated": "2026-10-13T23:56:32Z"
   }
 }
