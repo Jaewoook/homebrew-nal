@@ -28,5 +28,11 @@
     "revision": 0,
     "sha256": "63dafd5451767fc2df1b0be02138ca415c685de0196f43f9277c468104a7f402",
     "last_updated": "2026-10-13T02:35:02Z"
+  },
+  "gdb": {
+    "version": "18.1",
+    "revision": 0,
+    "sha256": "08a9156d1191b8e5968f9acde0acb0cfd56f3abf5aefac42ca6a46d24539db16",
+    "last_updated": "2026-10-13T02:35:04Z"
   }
 }
