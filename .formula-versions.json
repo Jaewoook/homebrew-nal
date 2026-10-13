@@ -82,5 +82,11 @@
     "revision": 0,
     "sha256": "0081a3a8d8afaa165b4bfa9b222723916b56f4d04b975d7aad35e8cdad0b0296",
     "last_updated": "2026-10-13T23:56:28Z"
+  },
+  "coreutils": {
+    "version": "9.12",
+    "revision": 0,
+    "sha256": "2c44e237622fe2fa6ffc119a6f37dd1077e4f80a15285c9f81d8c94d00831114",
+    "last_updated": "2026-10-13T23:56:29Z"
   }
 }
