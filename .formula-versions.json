@@ -46,5 +46,11 @@
     "revision": 0,
     "sha256": "41410dc9c3f29fef2aff5651afcb93520273737e89cfdd205ed07c832168cf52",
     "last_updated": "2026-10-13T06:15:21Z"
+  },
+  "pinentry-mac": {
+    "version": "1.3.1.1",
+    "revision": 0,
+    "sha256": "2cf1319e1fd92cae6f58faf9248210dc878c265016fcc9b1e2864b8e30d83deb",
+    "last_updated": "2026-10-13T06:15:23Z"
   }
 }
