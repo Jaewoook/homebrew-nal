@@ -94,5 +94,11 @@
     "revision": 0,
     "sha256": "d5cc61ccc0a8643be867dd1aabee7069d22e549b90c0999ea8c5a945940452cb",
     "last_updated": "2026-10-13T23:56:32Z"
+  },
+  "ffmpeg": {
+    "version": "9.0.2",
+    "revision": 1,
+    "sha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
+    "last_updated": "2026-10-13T23:56:33Z"
   }
 }
