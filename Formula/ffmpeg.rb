@@ -17,11 +17,9 @@ class Ffmpeg < Formula
   end
 
   bottle do
-    sha256 arm64_golden_gate: "d521452157b1117f909f441ce90165c360a7dcd9785c87d14cabc28934572a90"
-    sha256 arm64_tahoe:       "595b0bb854e692d7f6f89b866e860afacfdab5e3698451555547f58f523ed04d"
-    sha256 arm64_sequoia:     "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678"
-    sha256 arm64_linux:       "71883b27a7bea616321bb41458d4821ee31fe3855e0f262c9b27059fa4d56d91"
-    sha256 x86_64_linux:      "9b63fb0037cb84285b5c848606e3d84af3c8c39d17030ac9796de4acf631e951"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/ffmpeg-9.0.2_1"
+    rebuild 1
+    sha256 sequoia: "5afb7967a84db5ccc3d4a8e0ac2cb7aa3db0408e5b6dece5cefc9aeaa55b86f1"
   end
 
   depends_on "pkgconf" => :build
