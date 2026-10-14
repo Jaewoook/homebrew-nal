@@ -8,12 +8,9 @@ class Coreutils < Formula
   compatibility_version 1
 
   bottle do
-    rebuild 1
-    sha256 arm64_golden_gate: "47f3076c16c02a734c142e52d16646bb76961353e7f9dc621b6e45215d916cb3"
-    sha256 arm64_tahoe:       "df8e4e3dfb6ee737404df9e8dc78bb54d5eeb3c767241fca617fa5196c5747e2"
-    sha256 arm64_sequoia:     "208a94fb7d6c2ebfb412fc127a6699d8ccb37e8492a940b843d1046db6a1e755"
-    sha256 arm64_linux:       "d379b254313c151324d2220ef1009f5e7572eb7e39fac15ba9cc0a8b3e877687"
-    sha256 x86_64_linux:      "2694642f5877654a15ef2277bdf7197b578368f9d505d45690a9dc06aec27616"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/coreutils-9.12"
+    rebuild 2
+    sha256 sequoia: "4f79ffc34812d826e5f98412629daaa83e15b54817d682a85376305ff8aabdb4"
   end
 
   head do
