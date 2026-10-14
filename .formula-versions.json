@@ -100,5 +100,11 @@
     "revision": 1,
     "sha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
     "last_updated": "2026-10-13T23:56:33Z"
+  },
+  "node": {
+    "version": "26.11.1",
+    "revision": 0,
+    "sha256": "9b78a529be14e7a6a1d78fcc62240880e5a37bba98cfc00fcbe7fa764c7f27f5",
+    "last_updated": "2026-10-14T09:18:16Z"
   }
 }
