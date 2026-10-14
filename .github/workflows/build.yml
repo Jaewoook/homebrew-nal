@@ -167,10 +167,19 @@ jobs:
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Rename bottle archive to single-hyphen filename
+        run: |
+          for f in ${{ matrix.formula }}--*.tar.gz; do
+            [ -f "$f" ] || continue
+            TARGET_NAME="${f/--/-}"
+            echo "Renaming $f to $TARGET_NAME"
+            mv "$f" "$TARGET_NAME"
+          done
+
       - name: Upload Bottle file to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
-          files: "${{ matrix.formula }}--*.tar.gz"
+          files: "${{ matrix.formula }}-*.tar.gz"
           tag_name: "${{ env.RELEASE_TAG }}"
           name: "${{ env.RELEASE_TITLE }}"
           target_commitish: "${{ steps.commit.outputs.commit_sha }}"
