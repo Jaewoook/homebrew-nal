@@ -13,7 +13,7 @@ class Pinentry < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/pinentry-1.3.3"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/pinentry.1.3.3"
     rebuild 1
     sha256 cellar: :any, sequoia: "9d99e3fdf627b2e9091e37a19cbae70739ed94c59a7d4e6a02d4f465bc694b4b"
   end

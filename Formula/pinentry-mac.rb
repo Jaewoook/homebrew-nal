@@ -7,7 +7,7 @@ class PinentryMac < Formula
   head "https://github.com/GPGTools/pinentry.git", branch: "master"
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/pinentry-mac-1.3.1.1"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/pinentry-mac.1.3.1.1"
     rebuild 1
     sha256 cellar: :any, sequoia: "10557f7b31c38aa1e33bf8b70e19a306a07361663d8952df46d3a3022b1680af"
   end

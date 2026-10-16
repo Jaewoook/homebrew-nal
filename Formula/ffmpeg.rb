@@ -17,7 +17,7 @@ class Ffmpeg < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/ffmpeg-9.0.2_1"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/ffmpeg.9.0.2_1"
     rebuild 1
     sha256 sequoia: "5afb7967a84db5ccc3d4a8e0ac2cb7aa3db0408e5b6dece5cefc9aeaa55b86f1"
   end

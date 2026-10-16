@@ -13,7 +13,7 @@ class Gh < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gh-2.102.0"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gh.2.102.0"
     rebuild 1
     sha256 cellar: :any_skip_relocation, sequoia: "f30146d27cb1e7d63e68e2730a2264f05cb952b094bb8654a3dd74c980cced41"
   end

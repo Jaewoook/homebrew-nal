@@ -14,7 +14,7 @@ class Mole < Formula
 
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/mole-1.59.1"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/mole.1.59.1"
     rebuild 1
     sha256 cellar: :any_skip_relocation, sequoia: "b42161ea1d828ec0d36834e8a1540856727b0534edbdb7cd324299fd7819e6a3"
   end

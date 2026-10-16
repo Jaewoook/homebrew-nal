@@ -18,7 +18,7 @@ class Gnupg < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gnupg-2.5.24"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gnupg.2.5.24"
     rebuild 1
     sha256 sequoia: "5b2fa44ac25703ea241630dd976c22b97076b15025680fbd349078cded6981a2"
   end

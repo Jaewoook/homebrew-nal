@@ -9,7 +9,7 @@ class Gdb < Formula
   head "https://sourceware.org/git/binutils-gdb.git", branch: "master"
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gdb-18.1"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gdb.18.1"
     rebuild 1
     sha256 sequoia: "0e6b56eaf6936ace8a3d981dbe42e81c0a06646cad8160708ef3ebe17033ec97"
   end

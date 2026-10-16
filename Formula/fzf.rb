@@ -8,7 +8,7 @@ class Fzf < Formula
   head "https://github.com/junegunn/fzf.git", branch: "master"
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/fzf-0.74.5"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/fzf.0.74.5"
     rebuild 1
     sha256 cellar: :any_skip_relocation, sequoia: "f00bf4f2c1e3c90d7f0b4d493a6b61dafbb35b7b0b208541d954ea5f9b9c7ce7"
   end

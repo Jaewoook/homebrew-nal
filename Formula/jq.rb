@@ -12,7 +12,7 @@ class Jq < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/jq-1.8.2"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/jq.1.8.2"
     rebuild 2
     sha256 cellar: :any, sequoia: "2f5928622552ede81e4c938b92eab018591fcb4bf5853716003d3b367c52c315"
   end

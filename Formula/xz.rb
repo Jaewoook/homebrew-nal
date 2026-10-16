@@ -13,7 +13,7 @@ class Xz < Formula
   compatibility_version 1
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/xz-5.8.4"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/xz.5.8.4"
     rebuild 1
     sha256 cellar: :any, sequoia: "fb268b2bd2758cac1f8f021dcce0b5a8277f5cb8fd04443215f72ae5690e4b91"
   end

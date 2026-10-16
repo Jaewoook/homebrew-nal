@@ -32,7 +32,7 @@ class Gnutls < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gnutls-3.8.13_2"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gnutls.3.8.13_2"
     rebuild 2
     sha256 sequoia: "b52a1d35934bd488d2f6f03efecc9de5f1e60bda5798742ee2b81ea9e4e4aa5e"
   end

@@ -22,7 +22,7 @@ class Go < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/go-1.27.2"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/go.1.27.2"
     rebuild 1
     sha256 cellar: :any_skip_relocation, sequoia: "0d809f4b6de8e233aca61cc9e923090013fcb97c6f1a3164c1d0ea8b38298ee4"
   end

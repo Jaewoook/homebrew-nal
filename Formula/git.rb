@@ -20,7 +20,7 @@ class Git < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/git-2.56.0_1"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/git.2.56.0_1"
     rebuild 1
     sha256 sequoia: "d7c96456f58e1f9d97d00f56259a06a0883d8db6ea8b3174029c02a620041d07"
   end

@@ -8,7 +8,7 @@ class Coreutils < Formula
   compatibility_version 1
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/coreutils-9.12"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/coreutils.9.12"
     rebuild 2
     sha256 sequoia: "4f79ffc34812d826e5f98412629daaa83e15b54817d682a85376305ff8aabdb4"
   end

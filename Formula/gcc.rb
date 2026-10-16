@@ -25,7 +25,7 @@ class Gcc < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gcc-16.2.0"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gcc.16.2.0"
     rebuild 2
     sha256 sequoia: "9206962a4ddb4389ec29dd0e91d0d2a36f2a9b154bf832eb7f3c3e235d9cd45c"
   end
