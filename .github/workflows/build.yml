@@ -129,7 +129,7 @@ jobs:
 
           # Determine formula version for release tag and title
           FORMULA_VERSION=$(/usr/local/bin/brew ruby -e 'puts Formula["jaewoook/nal/'"${FORMULA_NAME}"'"].pkg_version')
-          RELEASE_TAG="${FORMULA_NAME}-${FORMULA_VERSION}"
+          RELEASE_TAG="${FORMULA_NAME}.${FORMULA_VERSION}"
           RELEASE_TITLE="${FORMULA_NAME} ${FORMULA_VERSION}"
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
           echo "RELEASE_TITLE=${RELEASE_TITLE}" >> "$GITHUB_ENV"
