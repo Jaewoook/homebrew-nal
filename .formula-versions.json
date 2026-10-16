@@ -102,9 +102,9 @@
     "last_updated": "2026-10-13T23:56:33Z"
   },
   "node": {
-    "version": "26.11.1",
+    "version": "26.12.0",
     "revision": 0,
-    "sha256": "9b78a529be14e7a6a1d78fcc62240880e5a37bba98cfc00fcbe7fa764c7f27f5",
-    "last_updated": "2026-10-14T09:18:16Z"
+    "sha256": "77a423884b4db1abe8113fc404054b8baa0835edf73c36c66cb6cfc27e1a4251",
+    "last_updated": "2026-10-16T14:45:19Z"
   }
 }
