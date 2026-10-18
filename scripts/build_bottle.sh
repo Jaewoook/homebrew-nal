@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure execution under Rosetta 2 (x86_64) on Apple Silicon hosts
+if [ "$(uname -m)" = "arm64" ]; then
+  exec arch -x86_64 /bin/bash "$0" "$@"
+fi
+
+# Sanitize PATH to ensure Apple Silicon Homebrew (/opt/homebrew) is excluded
+export PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Set architecture hints for tools like CMake
+export CMAKE_APPLE_SILICON_PROCESSOR="x86_64"
+
 FORMULA_NAME="${1:?Formula name argument required}"
 
 echo "=========================================="
