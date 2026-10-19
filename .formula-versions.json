@@ -106,5 +106,11 @@
     "revision": 0,
     "sha256": "77a423884b4db1abe8113fc404054b8baa0835edf73c36c66cb6cfc27e1a4251",
     "last_updated": "2026-10-16T14:45:19Z"
+  },
+  "tmux": {
+    "version": "3.8",
+    "revision": 0,
+    "sha256": "ba3f7933d0f68eced1d9104341d218c6538000fd358b0363d41ecccf72ad681e",
+    "last_updated": "2026-10-19T16:58:07Z"
   }
 }
