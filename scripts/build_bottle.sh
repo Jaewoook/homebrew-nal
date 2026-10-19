@@ -44,8 +44,12 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 
-# Build formula for bottling (dependencies are already installed in the step above)
-/usr/local/bin/brew install --build-bottle --ignore-dependencies "jaewoook/nal/$FORMULA_NAME"
+# Build formula from source with full dependency environment (avoids UnbottledError while preserving keg-only build tools like python@3.15)
+/usr/local/bin/brew install --build-from-source --skip-post-install "jaewoook/nal/$FORMULA_NAME"
+
+# Mark installed receipt as built_as_bottle so brew bottle accepts it
+/usr/local/bin/brew ruby -e 'tab = Tab.for_formula(Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]); tab.built_as_bottle = true; tab.write'
+
 /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_TAG}" --json "jaewoook/nal/$FORMULA_NAME"
 
 # Locate and merge bottle JSON metadata into formula
