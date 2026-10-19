@@ -27,6 +27,9 @@ if /usr/local/bin/brew list --formula --versions "$FORMULA_NAME" >/dev/null 2>&1
   /usr/local/bin/brew uninstall --ignore-dependencies "$FORMULA_NAME" || true
 fi
 
+# Pre-warm Homebrew API packages cache outside sandbox to avoid sandbox network errors during linkage fix
+/usr/local/bin/brew ruby -e 'Homebrew::API::Internal.fetch_packages_api! rescue nil' 2>/dev/null || true
+
 # Install dependencies first (allows source-building unbottled dependencies)
 /usr/local/bin/brew install --only-dependencies "jaewoook/nal/$FORMULA_NAME"
 
