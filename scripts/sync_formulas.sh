@@ -311,6 +311,7 @@ for FORMULA in $FORMULAS; do
   # 5. Git Commit and Push per formula
   if [[ "$AUTO_COMMIT" == "true" ]]; then
     echo "  [GIT] Committing changes for $FORMULA..."
+    git config commit.gpgsign false
     git add "$LOCAL_PATH" "$STATE_FILE"
     if [[ -d "Patches" ]]; then
       git add Patches
@@ -321,7 +322,7 @@ for FORMULA in $FORMULAS; do
       echo "  [GIT] No staged changes found to commit."
     else
       COMMIT_MSG="Update $FORMULA formula to $FULL_VER"
-      git commit -m "$COMMIT_MSG"
+      git commit --no-gpg-sign -m "$COMMIT_MSG"
 
       if [[ "$AUTO_PUSH" == "true" ]]; then
         echo "  [GIT] Pulling latest changes and pushing commit to remote branch $GIT_BRANCH..."
