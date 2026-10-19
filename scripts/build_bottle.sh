@@ -44,8 +44,8 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 
-# Build formula for bottling
-/usr/local/bin/brew install --build-bottle "jaewoook/nal/$FORMULA_NAME"
+# Build formula for bottling (dependencies are already installed in the step above)
+/usr/local/bin/brew install --build-bottle --ignore-dependencies "jaewoook/nal/$FORMULA_NAME"
 /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_TAG}" --json "jaewoook/nal/$FORMULA_NAME"
 
 # Locate and merge bottle JSON metadata into formula
