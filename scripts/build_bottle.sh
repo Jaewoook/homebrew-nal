@@ -12,6 +12,12 @@ export PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 # Set architecture hints for tools like CMake
 export CMAKE_APPLE_SILICON_PROCESSOR="x86_64"
 
+# Disable prompts and auto-update in subshells
+export HOMEBREW_NO_AUTO_UPDATE="1"
+export HOMEBREW_NO_INSTALL_CLEANUP="1"
+export HOMEBREW_NO_ASK="1"
+export NONINTERACTIVE="1"
+
 FORMULA_NAME="${1:?Formula name argument required}"
 
 echo "=========================================="
@@ -20,18 +26,6 @@ echo "=========================================="
 
 # Clean any lingering bottle archives from workspace
 rm -f *.bottle.tar.gz *.bottle.json *.tar.gz
-
-# Uninstall existing formula if present to avoid cross-tap conflicts
-if /usr/local/bin/brew list --formula --versions "$FORMULA_NAME" >/dev/null 2>&1; then
-  echo "Uninstalling existing $FORMULA_NAME to prevent tap conflict..."
-  /usr/local/bin/brew uninstall --ignore-dependencies "$FORMULA_NAME" || true
-fi
-
-# Pre-warm Homebrew API packages cache outside sandbox to avoid sandbox network errors during linkage fix
-/usr/local/bin/brew ruby -e 'Homebrew::API::Internal.fetch_packages_api! rescue nil' 2>/dev/null || true
-
-# Install dependencies first (allows source-building unbottled dependencies)
-/usr/local/bin/brew install --only-dependencies "jaewoook/nal/$FORMULA_NAME"
 
 # Determine formula version for release tag and title
 FORMULA_VERSION=$(/usr/local/bin/brew ruby -e 'puts Formula["jaewoook/nal/'"${FORMULA_NAME}"'"].pkg_version')
@@ -44,8 +38,35 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 
-# Build formula from source with full dependency environment (avoids UnbottledError while preserving keg-only build tools like python@3.15)
-/usr/local/bin/brew install --build-from-source --skip-post-install "jaewoook/nal/$FORMULA_NAME"
+# Check if target version is already built in the Cellar from this tap
+NEEDS_INSTALL=1
+if /usr/local/bin/brew ruby -e '
+  f = Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]
+  tab = Tab.for_formula(f) rescue nil
+  exit 0 if tab&.source&.[]("tap") == "jaewoook/nal" && f.installed_kegs.any? { |k| k.version.to_s == "'"${FORMULA_VERSION}"'" }
+  exit 1
+' 2>/dev/null; then
+  echo "$FORMULA_NAME $FORMULA_VERSION is already built in the Cellar from jaewoook/nal. Reusing existing build..."
+  NEEDS_INSTALL=0
+else
+  # Uninstall existing formula if present to avoid cross-tap or version conflicts
+  if /usr/local/bin/brew list --formula --versions "$FORMULA_NAME" >/dev/null 2>&1; then
+    echo "Uninstalling existing $FORMULA_NAME to prevent tap conflict..."
+    /usr/local/bin/brew uninstall --ignore-dependencies "$FORMULA_NAME" || true
+  fi
+fi
+
+# Pre-warm Homebrew API packages cache outside sandbox to avoid sandbox network errors during linkage fix
+/usr/local/bin/brew ruby -e 'Homebrew::API::Internal.fetch_packages_api! rescue nil' 2>/dev/null || true
+
+# Install dependencies first (allows source-building unbottled dependencies)
+/usr/local/bin/brew install --only-dependencies "jaewoook/nal/$FORMULA_NAME"
+
+if [ "$NEEDS_INSTALL" -eq 1 ]; then
+  # Build formula from source with full dependency environment (avoids UnbottledError while preserving keg-only build tools like python@3.15)
+  # Use --skip-link to prevent collisions with existing binaries in /usr/local/bin (bottling only needs the Cellar keg)
+  /usr/local/bin/brew install --build-from-source --skip-post-install --skip-link "jaewoook/nal/$FORMULA_NAME"
+fi
 
 # Mark installed receipt as built_as_bottle so brew bottle accepts it
 /usr/local/bin/brew ruby -e 'tab = Tab.for_formula(Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]); tab.built_as_bottle = true; tab.write'
