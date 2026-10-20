@@ -38,15 +38,22 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 
-# Check if target version is already built in the Cellar from this tap
+# Check if target version is already built in the Cellar
 NEEDS_INSTALL=1
 if /usr/local/bin/brew ruby -e '
   f = Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]
   tab = Tab.for_formula(f) rescue nil
-  exit 0 if tab&.source&.[]("tap") == "jaewoook/nal" && f.installed_kegs.any? { |k| k.version.to_s == "'"${FORMULA_VERSION}"'" }
+  if f.installed_kegs.any? { |k| k.version.to_s == "'"${FORMULA_VERSION}"'" }
+    if tab && tab.source&.[]("tap") != "jaewoook/nal"
+      tab.tap = Tap.fetch("jaewoook/nal") rescue nil
+      tab.source["tap"] = "jaewoook/nal" if tab.source
+      tab.write
+    end
+    exit 0
+  end
   exit 1
 ' 2>/dev/null; then
-  echo "$FORMULA_NAME $FORMULA_VERSION is already built in the Cellar from jaewoook/nal. Reusing existing build..."
+  echo "$FORMULA_NAME $FORMULA_VERSION is already built in the Cellar. Reusing existing build..."
   NEEDS_INSTALL=0
 else
   # Uninstall existing formula if present to avoid cross-tap or version conflicts
