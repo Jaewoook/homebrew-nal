@@ -18,6 +18,8 @@ DRY_RUN=${DRY_RUN:-"false"}
 AUTO_COMMIT=${AUTO_COMMIT:-"false"}
 AUTO_PUSH=${AUTO_PUSH:-"false"}
 GIT_BRANCH=${GIT_BRANCH:-"main"}
+IS_DEPENDENCY=${IS_DEPENDENCY:-"false"}
+WITH_DEPS=${WITH_DEPS:-"false"}
 
 CLI_FORMULAS=()
 
@@ -35,6 +37,8 @@ Options:
   -c, --commit          Commit updated formula(s) to git
   -p, --push            Push commits to remote repository
   -b, --branch BRANCH   Target git branch (default: main)
+  --as-dependency       Tag formula as a dependency in state tracking
+  --with-deps           Automatically resolve and register runtime dependencies
   -h, --help            Show this help message
 
 Environment Variables:
@@ -68,6 +72,14 @@ while [[ $# -gt 0 ]]; do
     -b|--branch)
       GIT_BRANCH="$2"
       shift 2
+      ;;
+    --as-dependency)
+      IS_DEPENDENCY="true"
+      shift
+      ;;
+    --with-deps)
+      WITH_DEPS="true"
+      shift
       ;;
     -h|--help)
       usage
@@ -298,13 +310,23 @@ for FORMULA in $FORMULAS; do
   # Update state JSON
   TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   TMP_STATE=$(mktemp)
-  jq --arg n "$FORMULA" \
-     --arg v "$UPSTREAM_VER" \
-     --argjson r "$UPSTREAM_REV" \
-     --arg s "$UPSTREAM_SHA" \
-     --arg t "$TIMESTAMP" \
-     '.[$n] = {version: $v, revision: $r, sha256: $s, last_updated: $t}' \
-     "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+  if [[ "$IS_DEPENDENCY" == "true" ]]; then
+    jq --arg n "$FORMULA" \
+       --arg v "$UPSTREAM_VER" \
+       --argjson r "$UPSTREAM_REV" \
+       --arg s "$UPSTREAM_SHA" \
+       --arg t "$TIMESTAMP" \
+       '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t, is_dependency: true})' \
+       "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+  else
+    jq --arg n "$FORMULA" \
+       --arg v "$UPSTREAM_VER" \
+       --argjson r "$UPSTREAM_REV" \
+       --arg s "$UPSTREAM_SHA" \
+       --arg t "$TIMESTAMP" \
+       '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t})' \
+       "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+  fi
 
   UPDATED_LIST+=("$FORMULA")
 
@@ -333,6 +355,25 @@ for FORMULA in $FORMULAS; do
     fi
   fi
 done
+
+if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true" ]]; then
+  echo ""
+  echo "Syncing runtime dependencies for updated formulas: ${UPDATED_LIST[*]}"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/sync_dependencies.sh" ]]; then
+    bash "$SCRIPT_DIR/sync_dependencies.sh" "${UPDATED_LIST[@]}"
+  fi
+  if [[ "$AUTO_COMMIT" == "true" ]]; then
+    git add "$FORMULA_DIR" "$STATE_FILE"
+    if ! git diff --staged --quiet; then
+      git commit --no-gpg-sign -m "Register runtime dependencies for ${UPDATED_LIST[*]}"
+      if [[ "$AUTO_PUSH" == "true" ]]; then
+        git pull --rebase origin "$GIT_BRANCH"
+        git push origin HEAD:"$GIT_BRANCH"
+      fi
+    fi
+  fi
+fi
 
 # Set GitHub Actions output if running in CI
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
