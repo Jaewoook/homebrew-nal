@@ -112,5 +112,11 @@
     "revision": 0,
     "sha256": "ba3f7933d0f68eced1d9104341d218c6538000fd358b0363d41ecccf72ad681e",
     "last_updated": "2026-10-19T16:58:07Z"
+  },
+  "rust": {
+    "version": "1.99.1",
+    "revision": 0,
+    "sha256": "b3e6ec47bc327e7d9f132be8b5ee880b64e8128ef3eedb70459677bdedabd18a",
+    "last_updated": "2026-10-20T13:09:11Z"
   }
 }
