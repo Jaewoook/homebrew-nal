@@ -61,6 +61,7 @@ jobs:
           TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
           mkdir -p "$(dirname "$TAP_DIR")"
           ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
+          /usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
 
       - name: Build package and create bottle
         env:

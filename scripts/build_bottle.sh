@@ -27,6 +27,10 @@ echo "=========================================="
 # Clean any lingering bottle archives from workspace
 rm -f *.bottle.tar.gz *.bottle.json *.tar.gz
 
+# Ensure tap and formula are trusted by Homebrew to avoid UntrustedTapError
+/usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
+/usr/local/bin/brew trust --formula "jaewoook/nal/${FORMULA_NAME}" 2>/dev/null || true
+
 # Determine formula version for release tag and title
 FORMULA_VERSION=$(/usr/local/bin/brew ruby -e 'puts Formula["jaewoook/nal/'"${FORMULA_NAME}"'"].pkg_version')
 RELEASE_TAG="${FORMULA_NAME}.${FORMULA_VERSION}"
