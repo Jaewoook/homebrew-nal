@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      with_deps:
+        description: 'Automatically resolve and register runtime dependencies'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -51,7 +56,12 @@ jobs:
         env:
           FORMULAS: ${{ inputs.formulas || 'llvm gcc' }}
           FORCE_SYNC: ${{ inputs.force || 'false' }}
+          WITH_DEPS: ${{ inputs.with_deps || 'false' }}
           GIT_BRANCH: 'main'
         run: |
-          chmod +x scripts/sync_formulas.sh
-          ./scripts/sync_formulas.sh --commit --push
+          chmod +x scripts/*.sh
+          EXTRA_ARGS=""
+          if [ "${WITH_DEPS}" = "true" ]; then
+            EXTRA_ARGS="--with-deps"
+          fi
+          ./scripts/sync_formulas.sh --commit --push $EXTRA_ARGS

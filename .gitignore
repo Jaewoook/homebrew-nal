@@ -1,3 +1,4 @@
 .superpowers/
+docs/
 *.bottle.tar.gz
 *.bottle.json

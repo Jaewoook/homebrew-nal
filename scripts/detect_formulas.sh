@@ -43,8 +43,47 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   JSON_ARRAY="[]"
   COUNT=0
 else
-  JSON_ARRAY=$(printf '%s\n' "${TARGETS[@]}" | jq -R . | jq -s -c .)
-  COUNT=${#TARGETS[@]}
+  # Sort targets topologically so dependencies are built before dependents
+  JSON_ARRAY=$(python3 - <<'EOF' "${TARGETS[@]}"
+import sys, os, json, re
+
+targets = sys.argv[1:]
+target_set = set(targets)
+adj = {t: set() for t in targets}
+
+for t in targets:
+    rb_path = f"Formula/{t}.rb"
+    if not os.path.exists(rb_path):
+        continue
+    try:
+        with open(rb_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        matches = re.findall(r'depends_on\s+"(?:[^"]+/)?([^"]+)"', content)
+        for m in matches:
+            if m in target_set and m != t:
+                adj[t].add(m)
+    except Exception:
+        pass
+
+visited = {}
+order = []
+
+def dfs(node):
+    if node in visited:
+        return
+    visited[node] = False
+    for dep in sorted(adj.get(node, [])):
+        dfs(dep)
+    visited[node] = True
+    order.append(node)
+
+for t in sorted(targets):
+    dfs(t)
+
+print(json.dumps(order))
+EOF
+)
+  COUNT=$(echo "$JSON_ARRAY" | jq '. | length')
 fi
 
 echo "Formulas to build: $JSON_ARRAY (count: $COUNT)"
