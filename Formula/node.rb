@@ -12,11 +12,9 @@ class Node < Formula
   end
 
   bottle do
-    sha256 arm64_golden_gate: "e67dcd39e1694e807d6736e8f8989c85727393d7cd2e202e22f367e9f54fb48a"
-    sha256 arm64_tahoe:       "0a15f8924e9c9c4bdfbbf7f8ce0c9cf4f6364c84e09142885c86be134dea3637"
-    sha256 arm64_sequoia:     "3d0a3317609ec84d69559202ac16d9b7bed4b2cb2616ab6e20d034fccfed61c6"
-    sha256 arm64_linux:       "ae8587524fe66995993f3dee59bb59844b093db37b2a9294eca366381359cd8c"
-    sha256 x86_64_linux:      "46ecef7b78e4c15828978131c893ce4e99e44d9206a3d34243c22c83764a54d8"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/node.26.12.0"
+    rebuild 1
+    sha256 sequoia: "2f361b195b20706c30f95ab17c1834d396798e1b2073184bed0ec0ee431b8404"
   end
 
   depends_on "pkgconf" => :build
