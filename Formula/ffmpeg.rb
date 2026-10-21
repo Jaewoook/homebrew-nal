@@ -39,7 +39,7 @@ class Ffmpeg < Formula
   depends_on "svt-av1"
   depends_on "x264"
   depends_on "x265"
-  depends_on "xz"
+  depends_on "jaewoook/nal/xz"
 
   uses_from_macos "bzip2"
   uses_from_macos "libxml2"

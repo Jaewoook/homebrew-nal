@@ -21,7 +21,7 @@ class Coreutils < Formula
     depends_on "bison" => :build
     depends_on "gettext" => :build
     depends_on "wget" => :build
-    depends_on "xz" => :build
+    depends_on "jaewoook/nal/xz" => :build
   end
 
   depends_on "texinfo" => :build

@@ -15,8 +15,9 @@ Without prebuilt bottles, running `brew install` for massive compiler suites (LL
 This tap solves that problem by:
 1. **Syncing Formulas**: Tracking upstream `Homebrew/homebrew-core` for version updates via an automated monthly schedule or manual dispatch.
 2. **Sanitizing Tap Formulas**: Automatically stripping official-tap-only DSL directives (such as `no_autobump!`) to keep custom tap loading clean.
-3. **Automated Prebuilding**: Compiling native `x86_64` binaries on a dedicated self-hosted macOS runner.
-4. **Publishing Bottles**: Hosting bottle archives on GitHub Releases and committing bottle blocks back to formulas for instant installation.
+3. **Resolving & Qualifying Dependencies**: Automatically importing runtime dependencies and rewriting unqualified dependencies (`depends_on "foo"`) to tap-qualified declarations (`depends_on "jaewoook/nal/foo"`), ensuring Intel Macs pour prebuilt binary bottles for the full dependency tree rather than building unbottled core dependencies from source.
+4. **Topological Prebuilding**: Sorting build queues so prerequisite dependencies are bottled before dependents on a dedicated self-hosted macOS runner.
+5. **Publishing Bottles**: Hosting bottle archives on GitHub Releases and committing bottle blocks back to formulas for instant installation.
 
 ---
 
@@ -46,32 +47,33 @@ brew install jaewoook/nal/<formula>
 
 ```mermaid
 flowchart LR
-    subgraph Sync ["1. Upstream Sync (Monthly / Dispatch)"]
+    subgraph Sync ["1. Upstream Sync & Dependency Resolution"]
         direction TB
-        A["Homebrew/homebrew-core"] --> B["sync-upstream.yml"]
-        B --> C["Sanitize & Update Formula/*.rb"]
+        A["Homebrew/homebrew-core"] --> B["sync-upstream.yml (--with-deps)"]
+        B --> C["Sanitize & Qualify Dependencies (jaewoook/nal/*)"]
         C --> D["Git push to main (SYNC_PAT)"]
     end
 
     subgraph Build ["2. Automated Bottle Build (Self-Hosted Runner)"]
         direction TB
-        D --> E["build.yml (Matrix)"]
-        E --> F["Compile with --build-bottle"]
-        F --> G["Commit bottle block to main"]
-        G --> H["Upload release asset to GitHub Releases"]
+        D --> E["detect_formulas.sh (Topological Sort)"]
+        E --> F["build.yml (Matrix: Prereqs First)"]
+        F --> G["Compile / Adopt Cellar Kegs"]
+        G --> H["Commit bottle block & Upload to Releases"]
     end
 ```
 
 ### 1. Upstream Synchronization (`sync-upstream.yml`)
 - Runs on a monthly cron schedule or manual dispatch.
 - Downloads updated formula files from `Homebrew/homebrew-core`.
-- Automatically strips official-tap-only DSL directives (e.g. `no_autobump!`) and records version state in [`.formula-versions.json`](.formula-versions.json).
+- Strips official-tap-only DSL directives (e.g. `no_autobump!`) and records version state in [`.formula-versions.json`](.formula-versions.json).
+- **Opt-in Dependency Sync (`with_deps`)**: When enabled, automatically discovers runtime dependencies, imports missing formulas into `Formula/`, marks them with `"is_dependency": true`, and rewrites references to `depends_on "jaewoook/nal/<dep>"`.
 - Pushes commits to `main` using `SYNC_PAT` so downstream build workflows are triggered automatically.
 
 ### 2. Bottle Build & Release Pipeline (`build.yml`)
 - Triggered by pushes to `Formula/**` or manual dispatch.
-- Runs on a dedicated macOS self-hosted runner under an isolated matrix (`fail-fast: false`).
-- Compiles formulas (`brew install --build-bottle`) and creates bottle metadata.
+- **Topological Matrix Ordering**: Uses `scripts/detect_formulas.sh` to sort target formulas so dependencies build and release before their dependents.
+- **Runner Auto-Trust & Keg Adoption**: Ensures tap and formula trust (`brew trust`) on modern Homebrew, and reuses matching Cellar kegs for instant bottle packaging without recompilation.
 - **Commit First, Release Second**: Merges and pushes the bottle block to `main` first, then attaches the GitHub Release asset directly to the resulting commit SHA. This ensures release tags always point directly to their respective bottle block commits.
 
 ---
@@ -125,6 +127,18 @@ flowchart LR
 
 # Sync specific formulas
 ./scripts/sync_formulas.sh llvm gcc
+
+# Sync formula and automatically register its runtime dependencies
+./scripts/sync_formulas.sh --with-deps node
+
+# Register specific formulas explicitly as dependencies
+./scripts/sync_formulas.sh --as-dependency c-ares libuv
+
+# Resolve and download runtime dependencies for local formulas
+./scripts/sync_dependencies.sh node
+
+# Re-qualify tap dependencies (depends_on "foo" -> depends_on "jaewoook/nal/foo")
+./scripts/qualify_dependencies.sh
 
 # Force sync and commit changes locally
 ./scripts/sync_formulas.sh --force --commit

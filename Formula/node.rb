@@ -19,7 +19,7 @@ class Node < Formula
 
   depends_on "pkgconf" => :build
   depends_on "python@3.15" => :build
-  depends_on "rust" => :build
+  depends_on "jaewoook/nal/rust" => :build
   depends_on "abseil"
   depends_on "ada-url"
   depends_on "brotli"
@@ -34,15 +34,15 @@ class Node < Formula
   depends_on "nbytes"
   depends_on "openssl@4"
   depends_on "simdjson"
-  depends_on "simdutf"
-  depends_on "sqlite" # Fails with macOS sqlite.
+  depends_on "jaewoook/nal/simdutf"
+  depends_on "jaewoook/nal/sqlite" # Fails with macOS sqlite.
   depends_on "uvwasi"
   depends_on "zstd"
 
   uses_from_macos "python"
 
   on_macos do
-    depends_on "llvm" => :build if DevelopmentTools.clang_build_version <= 1699
+    depends_on "jaewoook/nal/llvm" => :build if DevelopmentTools.clang_build_version <= 1699
     depends_on "highway"
   end
 

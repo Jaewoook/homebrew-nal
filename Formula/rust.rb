@@ -91,10 +91,10 @@ class Rust < Formula
 
   depends_on "libgit2"
   depends_on "libssh2"
-  depends_on "llvm"
+  depends_on "jaewoook/nal/llvm"
   depends_on "openssl@4"
   depends_on "pkgconf"
-  depends_on "sqlite"
+  depends_on "jaewoook/nal/sqlite"
 
   uses_from_macos "python" => :build
   uses_from_macos "curl"

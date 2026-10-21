@@ -20,7 +20,7 @@ class Gdb < Formula
   depends_on "ncurses" # https://github.com/Homebrew/homebrew-core/issues/224294
   depends_on "python@3.14"
   depends_on "readline"
-  depends_on "xz" # required for lzma support
+  depends_on "jaewoook/nal/xz" # required for lzma support
   depends_on "zstd"
 
   uses_from_macos "expat", since: :sequoia # minimum macOS due to python
