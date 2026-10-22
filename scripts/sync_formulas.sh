@@ -165,8 +165,8 @@ is_upstream_newer() {
   fi
 }
 
-# Centralized Git commit and push helper
-git_commit_and_push() {
+# Centralized Git commit and push helpers
+git_commit() {
   local commit_msg="$1"
   shift
   local files_to_stage=("$@")
@@ -190,13 +190,17 @@ git_commit_and_push() {
     commit_cmd+=(--no-gpg-sign)
   fi
   "${commit_cmd[@]}" -m "$commit_msg"
+}
 
-  if [[ "$AUTO_PUSH" == "true" ]]; then
-    echo "  [GIT] Pulling latest changes and pushing to branch $GIT_BRANCH..."
-    git pull --rebase origin "$GIT_BRANCH"
-    git push origin HEAD:"$GIT_BRANCH"
-    echo "  [GIT] Successfully pushed commit!"
+git_push_changes() {
+  if [[ "$AUTO_PUSH" != "true" ]]; then
+    return 0
   fi
+
+  echo "  [GIT] Pulling latest changes and pushing to branch $GIT_BRANCH..."
+  git pull --rebase origin "$GIT_BRANCH"
+  git push origin HEAD:"$GIT_BRANCH"
+  echo "  [GIT] Successfully pushed commits!"
 }
 
 # ------------------------------------------------------------------------------
@@ -456,7 +460,7 @@ for FORMULA in $FORMULAS; do
     fi
 
     COMMIT_MSG="Update $FORMULA formula to $FULL_VER"
-    git_commit_and_push "$COMMIT_MSG" "${FILES_TO_STAGE[@]}"
+    git_commit "$COMMIT_MSG" "${FILES_TO_STAGE[@]}"
   fi
 done
 
@@ -468,8 +472,13 @@ if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true
     bash "$SCRIPT_DIR/sync_dependencies.sh" "${UPDATED_LIST[@]}"
   fi
   if [[ "$AUTO_COMMIT" == "true" ]]; then
-    git_commit_and_push "Register runtime dependencies for ${UPDATED_LIST[*]}" "$FORMULA_DIR" "$STATE_FILE"
+    git_commit "Register runtime dependencies for ${UPDATED_LIST[*]}" "$FORMULA_DIR" "$STATE_FILE"
   fi
+fi
+
+# Push all accumulated commits once at the end
+if [[ "$AUTO_PUSH" == "true" && ${#UPDATED_LIST[@]} -gt 0 ]]; then
+  git_push_changes
 fi
 
 # Set GitHub Actions output if running in CI

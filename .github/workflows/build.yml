@@ -17,6 +17,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: bottle-build
+  cancel-in-progress: false
+
 jobs:
   detect:
     name: Detect Formulas to Build
