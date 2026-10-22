@@ -102,10 +102,10 @@
     "last_updated": "2026-10-13T23:56:33Z"
   },
   "node": {
-    "version": "26.12.0",
+    "version": "26.12.1",
     "revision": 0,
-    "sha256": "77a423884b4db1abe8113fc404054b8baa0835edf73c36c66cb6cfc27e1a4251",
-    "last_updated": "2026-10-16T14:45:19Z"
+    "sha256": "5bcd014d81ca88a77bd0a2c5f59c1414764435e07012d588fbcfc34e8cfd3755",
+    "last_updated": "2026-10-22T14:12:05Z"
   },
   "tmux": {
     "version": "3.8",

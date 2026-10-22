@@ -1,8 +1,8 @@
 class Node < Formula
   desc "Open-source, cross-platform JavaScript runtime environment"
   homepage "https://nodejs.org/"
-  url "https://nodejs.org/dist/v26.12.0/node-v26.12.0.tar.xz"
-  sha256 "ce59f9038dda0e637656fb1c36cf52c07c637922fd81d419dbba2ec129afbd35"
+  url "https://nodejs.org/dist/v26.12.1/node-v26.12.1.tar.xz"
+  sha256 "053e3b296859b6d8d93f99ef97fa9cec1c4ee171c72968100c649978c1dbd38c"
   license "MIT"
   head "https://github.com/nodejs/node.git", branch: "main"
 
@@ -12,14 +12,16 @@ class Node < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/node.26.12.0"
-    rebuild 1
-    sha256 sequoia: "2f361b195b20706c30f95ab17c1834d396798e1b2073184bed0ec0ee431b8404"
+    sha256 arm64_golden_gate: "76f58127c198f17ef3df5822bca7744eed9bc0e99fd14fbeff615253436ba591"
+    sha256 arm64_tahoe:       "4c5e91b55e8530e9dbac580f79a2d2b0e448495b6ce13fe37a4c737c51a9d64f"
+    sha256 arm64_sequoia:     "f94f208c2541a3781dce0689c3ed88df0582195e44f9ef2968bd8c351f454f05"
+    sha256 arm64_linux:       "9428623b314ebf3cd1326ff715f5e645e5ebd93654f5f35eb21c3b35a4fcd3ef"
+    sha256 x86_64_linux:      "bbc45fdae695d9f7dab74db8bdd90d3f580b00573d7ee28b924257dcce3f181d"
   end
 
   depends_on "pkgconf" => :build
   depends_on "python@3.15" => :build
-  depends_on "jaewoook/nal/rust" => :build
+  depends_on "rust" => :build
   depends_on "abseil"
   depends_on "ada-url"
   depends_on "brotli"
@@ -34,15 +36,15 @@ class Node < Formula
   depends_on "nbytes"
   depends_on "openssl@4"
   depends_on "simdjson"
-  depends_on "jaewoook/nal/simdutf"
-  depends_on "jaewoook/nal/sqlite" # Fails with macOS sqlite.
+  depends_on "simdutf"
+  depends_on "sqlite" # Fails with macOS sqlite.
   depends_on "uvwasi"
   depends_on "zstd"
 
   uses_from_macos "python"
 
   on_macos do
-    depends_on "jaewoook/nal/llvm" => :build if DevelopmentTools.clang_build_version <= 1699
+    depends_on "llvm" => :build if DevelopmentTools.clang_build_version <= 1699
     depends_on "highway"
   end
 
