@@ -18,12 +18,9 @@ class Cmake < Formula
   end
 
   bottle do
-    rebuild 1
-    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "6614033037dd78df8ef4fea463235b7a463f92caba61fc9fc93214fcd948cbe4"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:       "30efb5adfba2b7441a0fd6980039fadba94aff6ee1052a383dad9fab9b078eeb"
-    sha256 cellar: :any_skip_relocation, arm64_sequoia:     "b2a7da6b1f351024c84fe36af692f31a196cb21be74dae8a3f36925467fa676b"
-    sha256 cellar: :any,                 arm64_linux:       "0ed7f678a53d9f729dbf80444ecb56769da1e232e642b9e803c9ef8b4352cb3d"
-    sha256 cellar: :any,                 x86_64_linux:      "103c3634b5e6027b19bcf41100bbe02b0146a68aa88d563ec296afcba206c46e"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/cmake.4.4.4"
+    rebuild 2
+    sha256 cellar: :any_skip_relocation, sequoia: "dadd55462bbd92ac3aafc35c7cb58a732ca30fbb9a14aea8f077b59052b35d35"
   end
 
   uses_from_macos "ncurses"
