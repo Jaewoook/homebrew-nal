@@ -14,8 +14,8 @@ class Simdutf < Formula
 
   bottle do
     root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/simdutf.9.3.2"
-    rebuild 1
-    sha256 cellar: :any, sequoia: "12f8160319525ed2b75cff8090ebf517ae0cf51cb31fbf14c9a4963a0a01b054"
+    rebuild 2
+    sha256 cellar: :any, sequoia: "aefe8799743377a1933b7f386d72662d2a58918e3165ff6cd5a9cb3de278522e"
   end
 
   depends_on "jaewoook/nal/cmake" => :build
