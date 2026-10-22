@@ -63,4 +63,22 @@ if [ "$INDEX_B" -ge "$INDEX_A" ]; then
   exit 1
 fi
 
+# Test versioned expansion with app_a:all
+cat <<'EOF' > "$TMP_DIR/Formula/app_a@2.rb"
+class AppAAT2 < Formula
+  desc "App A v2"
+end
+EOF
+
+(
+  cd "$TMP_DIR"
+  FORMULA_INPUT="app_a:all" GITHUB_OUTPUT="$OUTPUT_FILE" bash scripts/detect_formulas.sh
+)
+
+EXPANDED_JSON=$(grep '^formulas=' "$OUTPUT_FILE" | cut -d= -f2-)
+if ! echo "$EXPANDED_JSON" | jq -e 'index("app_a")' >/dev/null || ! echo "$EXPANDED_JSON" | jq -e 'index("app_a@2")' >/dev/null; then
+  echo "Assertion failed: app_a:all did not expand to app_a and app_a@2"
+  exit 1
+fi
+
 echo "All detect_formulas ordering tests passed!"

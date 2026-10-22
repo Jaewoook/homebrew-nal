@@ -27,8 +27,19 @@ This tap solves that problem by:
 # Tap the repository
 brew tap jaewoook/nal
 
-# Install prebuilt formulas (specify tap prefix to ensure using this tap's bottles)
+# Install latest version (default)
 brew install jaewoook/nal/<formula>
+# Examples:
+#   brew install jaewoook/nal/node      # Installs latest Node (e.g. 26.x)
+#   brew install jaewoook/nal/rust      # Installs latest Rust (e.g. 1.99.x)
+#   brew install jaewoook/nal/llvm      # Installs latest LLVM (e.g. 23.x)
+
+# Install specific versioned formula
+brew install jaewoook/nal/<formula>@<version>
+# Examples:
+#   brew install jaewoook/nal/node@22   # Installs Node 22 LTS
+#   brew install jaewoook/nal/llvm@18   # Installs LLVM 18
+#   brew install jaewoook/nal/python@3.14
 ```
 
 > [!TIP]
@@ -43,24 +54,45 @@ brew install jaewoook/nal/<formula>
 
 ---
 
+## Multiple Version Support
+
+Formulas in `homebrew-nal` support both the latest release (default) and major versioned releases:
+
+| Target | Description | Example |
+| :--- | :--- | :--- |
+| **`latest` (default)** | Resolves to the main formula file (`Formula/<name>.rb`). | `node`, `llvm`, `gcc`, `rust` |
+| **Specific Version** | Targets a dedicated versioned formula (`Formula/<name>@<ver>.rb`). | `node@22`, `node@20`, `llvm@18` |
+| **`all` Versions** | Syncs/builds the latest version plus all active versioned formulas discovered via Homebrew Core API. | `node:all`, `llvm:all` |
+
+---
+
 ## Workflow Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Sync ["1. Upstream Sync & Dependency Resolution"]
+flowchart TD
+    subgraph S1 ["1. Upstream Sync & Dependency Resolution"]
         direction TB
-        A["Homebrew/homebrew-core"] --> B["sync-upstream.yml (--with-deps)"]
-        B --> C["Sanitize & Qualify Dependencies (jaewoook/nal/*)"]
-        C --> D["Git push to main (SYNC_PAT)"]
+        A["Homebrew Core Upstream"] -->|"Check formula updates"| B["sync-upstream.yml"]
+        B -->|"Strip private directives\nResolve versions: latest / all"| C["Formula/*.rb"]
+        C -->|"Rewrite depends_on 'jaewoook/nal/*' (--with-deps)"| D["Git Push to main (SYNC_PAT)"]
     end
 
-    subgraph Build ["2. Automated Bottle Build (Self-Hosted Runner)"]
+    subgraph S2 ["2. Automated Bottle Build (macOS x86_64 Runner)"]
         direction TB
-        D --> E["detect_formulas.sh (Topological Sort)"]
-        E --> F["build.yml (Matrix: Prereqs First)"]
-        F --> G["Compile / Adopt Cellar Kegs"]
-        G --> H["Commit bottle block & Upload to Releases"]
+        D -->|"Triggers build matrix"| E["detect_formulas.sh\n(Topological Sort)"]
+        E -->|"Build prerequisites first"| F["build.yml (Runner Matrix)"]
+        F -->|"brew bottle --root-url\n(adopt kegs or compile)"| G["Generate Bottle Archive"]
+        G -->|"1. Commit bottle block"| H["main branch"]
+        G -->|"2. Upload .tar.gz asset"| I["GitHub Releases"]
     end
+
+    subgraph S3 ["3. Intel Mac Client Installation"]
+        direction TB
+        H & I -->|"brew install jaewoook/nal/<formula>"| J["Download Pre-built Bottle"]
+        J -->|"Instant binary pour\nZero source compilation"| K["Installed & Ready"]
+    end
+
+    S1 --> S2 --> S3
 ```
 
 ### 1. Upstream Synchronization (`sync-upstream.yml`)
@@ -125,8 +157,16 @@ flowchart LR
 # Check upstream versions without making changes (dry-run)
 ./scripts/sync_formulas.sh --dry-run
 
-# Sync specific formulas
+# Sync specific formulas (default: latest version)
 ./scripts/sync_formulas.sh llvm gcc
+
+# Sync all supported versions for a formula (latest + all versioned formulas)
+./scripts/sync_formulas.sh --versions all node
+
+# Sync specific major versions for a formula
+./scripts/sync_formulas.sh --versions 20,22 node
+# Or pass versioned formula names directly:
+./scripts/sync_formulas.sh node@22 llvm@18
 
 # Sync formula and automatically register its runtime dependencies
 ./scripts/sync_formulas.sh --with-deps node

@@ -18,7 +18,26 @@ if [ -n "$FORMULA_INPUT" ]; then
   else
     CLEANED=$(echo "$FORMULA_INPUT" | tr ',' ' ')
     for name in $CLEANED; do
-      if [ -f "Formula/${name}.rb" ]; then
+      if [[ "$name" =~ ^([^:]+):all$ ]]; then
+        base="${BASH_REMATCH[1]}"
+        found=0
+        for f in Formula/${base}.rb Formula/${base}@*.rb; do
+          if [ -f "$f" ]; then
+            TARGETS+=("$(basename "$f" .rb)")
+            found=1
+          fi
+        done
+        if [ "$found" -eq 0 ]; then
+          echo "::warning::No formula found for ${base}:all, skipping."
+        fi
+      elif [[ "$name" =~ ^([^:]+):([0-9].*)$ ]]; then
+        versioned="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
+        if [ -f "Formula/${versioned}.rb" ]; then
+          TARGETS+=("$versioned")
+        else
+          echo "::warning::Formula Formula/${versioned}.rb not found, skipping."
+        fi
+      elif [ -f "Formula/${name}.rb" ]; then
         TARGETS+=("$name")
       else
         echo "::warning::Formula Formula/${name}.rb not found, skipping."
@@ -26,7 +45,7 @@ if [ -n "$FORMULA_INPUT" ]; then
     done
   fi
 elif [ "$EVENT_NAME" = "push" ]; then
-  if [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+  if [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$EVENT_BEFORE" 2>/dev/null; then
     CHANGED=$(git diff --name-only "$EVENT_BEFORE" HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
   else
     CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)

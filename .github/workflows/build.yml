@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       formula:
-        description: 'Specific formula to build (e.g. "xz", "gcc", "llvm", or "all"). Multiple formulas can be separated by comma or space.'
+        description: 'Specific formula to build (e.g. "xz", "node", "node@22", "node:all", or "all"). Multiple formulas can be separated by comma or space.'
         required: false
         default: ''
         type: string
@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Determine target formulas
         id: detect

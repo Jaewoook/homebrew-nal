@@ -20,6 +20,10 @@ on:
         required: false
         type: boolean
         default: false
+      versions:
+        description: 'Version mode: "latest" (default), "all" (includes versioned formulas), or comma-separated (e.g. "20,22")'
+        required: false
+        default: 'latest'
 
 permissions:
   contents: write
@@ -55,6 +59,7 @@ jobs:
         id: sync
         env:
           FORMULAS: ${{ inputs.formulas || 'llvm gcc' }}
+          VERSIONS: ${{ inputs.versions || 'latest' }}
           FORCE_SYNC: ${{ inputs.force || 'false' }}
           WITH_DEPS: ${{ inputs.with_deps || 'false' }}
           GIT_BRANCH: 'main'
@@ -62,6 +67,9 @@ jobs:
           chmod +x scripts/*.sh
           EXTRA_ARGS=""
           if [ "${WITH_DEPS}" = "true" ]; then
-            EXTRA_ARGS="--with-deps"
+            EXTRA_ARGS="$EXTRA_ARGS --with-deps"
+          fi
+          if [ -n "${VERSIONS}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --versions ${VERSIONS}"
           fi
           ./scripts/sync_formulas.sh --commit --push $EXTRA_ARGS

@@ -4,8 +4,8 @@
 # ==============================================================================
 set -euo pipefail
 
-UPSTREAM_RAW_BASE="https://raw.githubusercontent.com/Homebrew/homebrew-core/master"
-UPSTREAM_API_BASE="https://formulae.brew.sh/api/formula"
+UPSTREAM_RAW_BASE=${UPSTREAM_RAW_BASE:-"https://raw.githubusercontent.com/Homebrew/homebrew-core/master"}
+UPSTREAM_API_BASE=${UPSTREAM_API_BASE:-"https://formulae.brew.sh/api/formula"}
 STATE_FILE=".formula-versions.json"
 FORMULA_DIR="Formula"
 
@@ -20,6 +20,7 @@ AUTO_PUSH=${AUTO_PUSH:-"false"}
 GIT_BRANCH=${GIT_BRANCH:-"main"}
 IS_DEPENDENCY=${IS_DEPENDENCY:-"false"}
 WITH_DEPS=${WITH_DEPS:-"false"}
+VERSIONS=${VERSIONS:-"latest"}
 
 CLI_FORMULAS=()
 
@@ -37,12 +38,13 @@ Options:
   -c, --commit          Commit updated formula(s) to git
   -p, --push            Push commits to remote repository
   -b, --branch BRANCH   Target git branch (default: main)
+  -v, --versions SPEC   Versions to sync: "latest" (default), "all", or "20,22"
   --as-dependency       Tag formula as a dependency in state tracking
   --with-deps           Automatically resolve and register runtime dependencies
   -h, --help            Show this help message
 
 Environment Variables:
-  FORMULAS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH
+  FORMULAS, VERSIONS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH
 EOF
   exit 0
 }
@@ -71,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -b|--branch)
       GIT_BRANCH="$2"
+      shift 2
+      ;;
+    -v|--versions)
+      VERSIONS="$2"
       shift 2
       ;;
     --as-dependency)
@@ -105,6 +111,66 @@ FORMULAS=$(echo "$FORMULAS" | tr ',' ' ')
 # ------------------------------------------------------------------------------
 # Helper Functions
 # ------------------------------------------------------------------------------
+
+# Formula Version Resolver (supports "latest", "all", or comma-separated versions)
+resolve_formula_targets() {
+  local formulas_raw="$1"
+  local versions_mode="${2:-latest}"
+  local resolved=()
+
+  for item in $formulas_raw; do
+    local base="$item"
+    local spec="$versions_mode"
+
+    if [[ "$item" =~ ^([^:@]+):(.*)$ ]]; then
+      base="${BASH_REMATCH[1]}"
+      spec="${BASH_REMATCH[2]}"
+    elif [[ "$item" =~ ^([^@]+)@([0-9].*)$ ]]; then
+      resolved+=("$item")
+      continue
+    fi
+
+    if [[ "$spec" == "latest" ]]; then
+      resolved+=("$base")
+    elif [[ "$spec" == "all" ]]; then
+      resolved+=("$base")
+      local v_list
+      v_list=$(curl -sSfL -H "User-Agent: Homebrew" "https://formulae.brew.sh/api/formula/${base}.json" 2>/dev/null | jq -r '.versioned_formulae[]?' 2>/dev/null || true)
+      for vf in $v_list; do
+        [ -n "$vf" ] || continue
+        resolved+=("$vf")
+      done
+    else
+      local IFS_BACK="$IFS"
+      IFS=','
+      read -ra v_arr <<< "$spec"
+      IFS="$IFS_BACK"
+
+      for v in "${v_arr[@]}"; do
+        v=$(echo "$v" | xargs)
+        if [[ "$v" == "latest" ]]; then
+          resolved+=("$base")
+        elif [[ "$v" =~ ^@ ]]; then
+          resolved+=("${base}${v}")
+        elif [[ "$v" =~ ^[0-9] ]]; then
+          resolved+=("${base}@${v}")
+        elif [[ -n "$v" ]]; then
+          resolved+=("$v")
+        fi
+      done
+    fi
+  done
+
+  local final_list=()
+  for r in "${resolved[@]}"; do
+    case " ${final_list[*]:-} " in
+      *" $r "*) ;;
+      *) final_list+=("$r") ;;
+    esac
+  done
+
+  echo "${final_list[*]:-}"
+}
 
 # Cross-platform SHA256 checksum (macOS shasum vs Linux sha256sum)
 calc_sha256() {
@@ -169,6 +235,8 @@ fi
 # ------------------------------------------------------------------------------
 # Main Sync Logic
 # ------------------------------------------------------------------------------
+FORMULAS=$(resolve_formula_targets "$FORMULAS" "$VERSIONS")
+
 mkdir -p "$FORMULA_DIR"
 if [[ ! -f "$STATE_FILE" ]]; then
   echo "{}" > "$STATE_FILE"
