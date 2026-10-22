@@ -17,8 +17,8 @@ class Sqlite < Formula
 
   bottle do
     root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/sqlite.3.54.0"
-    rebuild 1
-    sha256 cellar: :any, sequoia: "b43934465159225fc6fddb73aa68c84b9602b41b92b3ae75f14bcdd16d14b1cd"
+    rebuild 2
+    sha256 cellar: :any, sequoia: "de2a265c5264b9b1884ddde53a4933c71726d7495217e86bea2fe0310ce8d1b9"
   end
 
   keg_only :provided_by_macos
