@@ -26,8 +26,8 @@ class Gcc < Formula
 
   bottle do
     root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gcc.16.2.0"
-    rebuild 2
-    sha256 sequoia: "9206962a4ddb4389ec29dd0e91d0d2a36f2a9b154bf832eb7f3c3e235d9cd45c"
+    rebuild 3
+    sha256 sequoia: "918cc6dea807eb4e566f5a2ee75b66166e0cb0c7918e59ff78052649662c935c"
   end
 
   # The bottles are built on systems with the CLT installed, and do not work
