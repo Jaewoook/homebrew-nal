@@ -91,3 +91,7 @@ jobs:
         run: |
           rm -f *.tar.gz *.json
           /usr/local/bin/brew cleanup --prune=all -s
+          git config --local --unset-all user.name 2>/dev/null || true
+          git config --local --unset-all user.email 2>/dev/null || true
+          git config --local --unset-all user.signingkey 2>/dev/null || true
+          git config --local --unset-all commit.gpgsign 2>/dev/null || true

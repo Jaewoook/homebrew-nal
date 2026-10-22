@@ -21,6 +21,7 @@ GIT_BRANCH=${GIT_BRANCH:-"main"}
 IS_DEPENDENCY=${IS_DEPENDENCY:-"false"}
 WITH_DEPS=${WITH_DEPS:-"false"}
 AUTO_PRESERVE=${AUTO_PRESERVE:-"true"}
+NO_GPG_SIGN=${NO_GPG_SIGN:-"false"}
 
 CLI_FORMULAS=()
 
@@ -38,13 +39,14 @@ Options:
   -c, --commit          Commit updated formula(s) to git
   -p, --push            Push commits to remote repository
   -b, --branch BRANCH   Target git branch (default: main)
+  --no-gpg-sign         Disable GPG signing when committing to git
   --as-dependency       Tag formula as a dependency in state tracking
   --with-deps           Automatically resolve and register runtime dependencies
   --no-preserve         Do not auto-preserve previous major versions as <formula>@<version>
   -h, --help            Show this help message
 
 Environment Variables:
-  FORMULAS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH, AUTO_PRESERVE
+  FORMULAS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH, NO_GPG_SIGN, AUTO_PRESERVE
 EOF
   exit 0
 }
@@ -74,6 +76,10 @@ while [[ $# -gt 0 ]]; do
     -b|--branch)
       GIT_BRANCH="$2"
       shift 2
+      ;;
+    --no-gpg-sign)
+      NO_GPG_SIGN="true"
+      shift
       ;;
     --as-dependency)
       IS_DEPENDENCY="true"
@@ -159,6 +165,40 @@ is_upstream_newer() {
   fi
 }
 
+# Centralized Git commit and push helper
+git_commit_and_push() {
+  local commit_msg="$1"
+  shift
+  local files_to_stage=("$@")
+
+  if [[ "$AUTO_COMMIT" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ ${#files_to_stage[@]} -gt 0 ]]; then
+    git add "${files_to_stage[@]}"
+  fi
+
+  if git diff --staged --quiet; then
+    echo "  [GIT] No staged changes found to commit."
+    return 0
+  fi
+
+  echo "  [GIT] Committing: $commit_msg"
+  local commit_cmd=(git commit)
+  if [[ "$NO_GPG_SIGN" == "true" ]]; then
+    commit_cmd+=(--no-gpg-sign)
+  fi
+  "${commit_cmd[@]}" -m "$commit_msg"
+
+  if [[ "$AUTO_PUSH" == "true" ]]; then
+    echo "  [GIT] Pulling latest changes and pushing to branch $GIT_BRANCH..."
+    git pull --rebase origin "$GIT_BRANCH"
+    git push origin HEAD:"$GIT_BRANCH"
+    echo "  [GIT] Successfully pushed commit!"
+  fi
+}
+
 # ------------------------------------------------------------------------------
 # Dependency Verification
 # ------------------------------------------------------------------------------
@@ -193,6 +233,7 @@ echo "=================================================="
 UPDATED_LIST=()
 
 for FORMULA in $FORMULAS; do
+  PRESERVED_CANDIDATE_PATH=""
   echo ""
   echo "Checking formula: $FORMULA"
   LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
@@ -355,10 +396,7 @@ for FORMULA in $FORMULAS; do
            "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
 
         UPDATED_LIST+=("$CANDIDATE")
-
-        if [[ "$AUTO_COMMIT" == "true" ]]; then
-          git add "$CANDIDATE_PATH" "$STATE_FILE"
-        fi
+        PRESERVED_CANDIDATE_PATH="$CANDIDATE_PATH"
         break
       else
         rm -f "$TMP_CANDIDATE"
@@ -409,27 +447,16 @@ for FORMULA in $FORMULAS; do
 
   # 5. Git Commit and Push per formula
   if [[ "$AUTO_COMMIT" == "true" ]]; then
-    echo "  [GIT] Committing changes for $FORMULA..."
-    git config commit.gpgsign false
-    git add "$LOCAL_PATH" "$STATE_FILE"
+    FILES_TO_STAGE=("$LOCAL_PATH" "$STATE_FILE")
+    if [[ -n "$PRESERVED_CANDIDATE_PATH" && -f "$PRESERVED_CANDIDATE_PATH" ]]; then
+      FILES_TO_STAGE+=("$PRESERVED_CANDIDATE_PATH")
+    fi
     if [[ -d "Patches" ]]; then
-      git add Patches
+      FILES_TO_STAGE+=("Patches")
     fi
 
-    # Avoid committing if no staged changes
-    if git diff --staged --quiet; then
-      echo "  [GIT] No staged changes found to commit."
-    else
-      COMMIT_MSG="Update $FORMULA formula to $FULL_VER"
-      git commit --no-gpg-sign -m "$COMMIT_MSG"
-
-      if [[ "$AUTO_PUSH" == "true" ]]; then
-        echo "  [GIT] Pulling latest changes and pushing commit to remote branch $GIT_BRANCH..."
-        git pull --rebase origin "$GIT_BRANCH"
-        git push origin HEAD:"$GIT_BRANCH"
-        echo "  [GIT] Successfully pushed commit!"
-      fi
-    fi
+    COMMIT_MSG="Update $FORMULA formula to $FULL_VER"
+    git_commit_and_push "$COMMIT_MSG" "${FILES_TO_STAGE[@]}"
   fi
 done
 
@@ -441,14 +468,7 @@ if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true
     bash "$SCRIPT_DIR/sync_dependencies.sh" "${UPDATED_LIST[@]}"
   fi
   if [[ "$AUTO_COMMIT" == "true" ]]; then
-    git add "$FORMULA_DIR" "$STATE_FILE"
-    if ! git diff --staged --quiet; then
-      git commit --no-gpg-sign -m "Register runtime dependencies for ${UPDATED_LIST[*]}"
-      if [[ "$AUTO_PUSH" == "true" ]]; then
-        git pull --rebase origin "$GIT_BRANCH"
-        git push origin HEAD:"$GIT_BRANCH"
-      fi
-    fi
+    git_commit_and_push "Register runtime dependencies for ${UPDATED_LIST[*]}" "$FORMULA_DIR" "$STATE_FILE"
   fi
 fi
 
