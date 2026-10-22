@@ -12,7 +12,9 @@ class CaCertificates < Formula
   end
 
   bottle do
-    sha256 cellar: :any_skip_relocation, all: "8589f4e61b3afcc5ea375aab11af1c891ec4c94421c699c2a5a4765078de4443"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/ca-certificates.2026-10-20"
+    rebuild 1
+    sha256 cellar: :any_skip_relocation, sequoia: "05f3952a1bc6dbbe97cd09c5e4f0a4092faa1affc8e6c2996b4f9ee9fffd8cf8"
   end
 
   deny_network_access!
