@@ -21,8 +21,8 @@ class Git < Formula
 
   bottle do
     root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/git.2.56.0_1"
-    rebuild 1
-    sha256 sequoia: "d7c96456f58e1f9d97d00f56259a06a0883d8db6ea8b3174029c02a620041d07"
+    rebuild 2
+    sha256 sequoia: "48743e86d30959ffa8ca1aec7cfb0db169372603a3f1c4cd117f09eedd8e383b"
   end
 
   depends_on "gettext" => :build
