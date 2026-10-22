@@ -12,11 +12,9 @@ class OpensslAT4 < Formula
   end
 
   bottle do
-    sha256 arm64_golden_gate: "cfe1f3ee8ddafdb7f19fe4d4dd600e2b84257df4fa09a169ccb7322d38483f90"
-    sha256 arm64_tahoe:       "39fb74d25429fbb9794cf4327530ba458b97d0000406715270d3b0715bd6ba35"
-    sha256 arm64_sequoia:     "e9968c63732a4aa642c6131f120d0a89a119885f7ce3cfec796ae672369b98a6"
-    sha256 arm64_linux:       "5ab5831952c0fd3b0fe948a2068b04495f8c614e70afe4bbc868a618ef129b1e"
-    sha256 x86_64_linux:      "c046045831b56b72198570373a6010bcb14d39c475d4f10e2e26665abc936e34"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/openssl@4.4.0.3"
+    rebuild 1
+    sha256 sequoia: "a9902deed030e52738185ab9fb247121be2e380f04157c5f02144eb287e0cff6"
   end
 
   depends_on "jaewoook/nal/ca-certificates" => :no_linkage
