@@ -21,6 +21,7 @@ GIT_BRANCH=${GIT_BRANCH:-"main"}
 IS_DEPENDENCY=${IS_DEPENDENCY:-"false"}
 WITH_DEPS=${WITH_DEPS:-"false"}
 VERSIONS=${VERSIONS:-"latest"}
+AUTO_PRESERVE=${AUTO_PRESERVE:-"true"}
 
 CLI_FORMULAS=()
 
@@ -41,10 +42,11 @@ Options:
   -v, --versions SPEC   Versions to sync: "latest" (default), "all", or "20,22"
   --as-dependency       Tag formula as a dependency in state tracking
   --with-deps           Automatically resolve and register runtime dependencies
+  --no-preserve         Do not auto-preserve previous major versions as <formula>@<version>
   -h, --help            Show this help message
 
 Environment Variables:
-  FORMULAS, VERSIONS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH
+  FORMULAS, VERSIONS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH, AUTO_PRESERVE
 EOF
   exit 0
 }
@@ -85,6 +87,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-deps)
       WITH_DEPS="true"
+      shift
+      ;;
+    --no-preserve)
+      AUTO_PRESERVE="false"
       shift
       ;;
     -h|--help)
@@ -355,6 +361,77 @@ for FORMULA in $FORMULAS; do
     UPDATED_LIST+=("$FORMULA")
     rm -f "$TMP_RB"
     continue
+  fi
+
+  # Auto-preserve previous major version as <formula>@<prev_version> on major bumps
+  if [[ "$AUTO_PRESERVE" == "true" && -n "$LOCAL_VER" && "$FORMULA" != *"@"* && -f "$LOCAL_PATH" ]]; then
+    LOCAL_MAJOR=$(echo "$LOCAL_VER" | cut -d. -f1)
+    UPSTREAM_MAJOR=$(echo "$UPSTREAM_VER" | cut -d. -f1)
+
+    LOCAL_MINOR=$(echo "$LOCAL_VER" | cut -d. -f2)
+    UPSTREAM_MINOR=$(echo "$UPSTREAM_VER" | cut -d. -f2)
+    LOCAL_MAJOR_MINOR="${LOCAL_MAJOR}.${LOCAL_MINOR}"
+    UPSTREAM_MAJOR_MINOR="${UPSTREAM_MAJOR}.${UPSTREAM_MINOR}"
+
+    PREV_CANDIDATES=()
+    if [[ -n "$LOCAL_MAJOR" && -n "$UPSTREAM_MAJOR" && "$LOCAL_MAJOR" != "$UPSTREAM_MAJOR" ]]; then
+      PREV_CANDIDATES+=("${FORMULA}@${LOCAL_MAJOR}")
+    fi
+    if [[ -n "$LOCAL_MINOR" && -n "$UPSTREAM_MINOR" && "$LOCAL_MAJOR_MINOR" != "$UPSTREAM_MAJOR_MINOR" ]]; then
+      PREV_CANDIDATES+=("${FORMULA}@${LOCAL_MAJOR_MINOR}")
+    fi
+
+    for CANDIDATE in "${PREV_CANDIDATES[@]}"; do
+      CANDIDATE_PATH="$FORMULA_DIR/${CANDIDATE}.rb"
+      if [[ -f "$CANDIDATE_PATH" ]]; then
+        continue
+      fi
+
+      CANDIDATE_CHAR=$(printf "%s" "${CANDIDATE:0:1}" | tr '[:upper:]' '[:lower:]')
+      CANDIDATE_SHARDED="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE_CHAR}/${CANDIDATE}.rb"
+      CANDIDATE_ROOT="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE}.rb"
+
+      TMP_CANDIDATE=$(mktemp)
+      CANDIDATE_FOUND=false
+      if curl -sSfL "$CANDIDATE_SHARDED" -o "$TMP_CANDIDATE" 2>/dev/null || curl -sSfL "$CANDIDATE_ROOT" -o "$TMP_CANDIDATE" 2>/dev/null; then
+        CANDIDATE_FOUND=true
+      fi
+
+      if [[ "$CANDIDATE_FOUND" == "true" ]]; then
+        echo "  [AUTO-PRESERVE] Major version bump detected (${LOCAL_VER} -> ${FULL_VER})."
+        echo "                  Preserving previous version as: $CANDIDATE"
+
+        grep -v -E '^[[:space:]]*no_autobump!' "$TMP_CANDIDATE" > "$CANDIDATE_PATH"
+        rm -f "$TMP_CANDIDATE"
+
+        CANDIDATE_SHA=$(calc_sha256 "$CANDIDATE_PATH")
+        CANDIDATE_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$CANDIDATE_PATH" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || echo "$LOCAL_VER")
+        if [[ -z "$CANDIDATE_VER" ]]; then
+          CANDIDATE_VER=$(grep -oE 'url[[:space:]]+".*-(.*)\.tar' "$CANDIDATE_PATH" | sed -E 's/.*-(.*)\.tar/\1/' || echo "$LOCAL_VER")
+        fi
+        CANDIDATE_REV=$(grep -E '^[[:space:]]*revision[[:space:]]+[0-9]+' "$CANDIDATE_PATH" | awk '{print $2}' || echo "0")
+        CANDIDATE_REV=${CANDIDATE_REV:-0}
+
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        TMP_STATE=$(mktemp)
+        jq --arg n "$CANDIDATE" \
+           --arg v "$CANDIDATE_VER" \
+           --argjson r "$CANDIDATE_REV" \
+           --arg s "$CANDIDATE_SHA" \
+           --arg t "$TIMESTAMP" \
+           '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t, is_versioned: true})' \
+           "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+
+        UPDATED_LIST+=("$CANDIDATE")
+
+        if [[ "$AUTO_COMMIT" == "true" ]]; then
+          git add "$CANDIDATE_PATH" "$STATE_FILE"
+        fi
+        break
+      else
+        rm -f "$TMP_CANDIDATE"
+      fi
+    done
   fi
 
   # Apply update

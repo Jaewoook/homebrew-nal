@@ -64,6 +64,10 @@ Formulas in `homebrew-nal` support both the latest release (default) and major v
 | **Specific Version** | Targets a dedicated versioned formula (`Formula/<name>@<ver>.rb`). | `node@22`, `node@20`, `llvm@18` |
 | **`all` Versions** | Syncs/builds the latest version plus all active versioned formulas discovered via Homebrew Core API. | `node:all`, `llvm:all` |
 
+> [!NOTE]
+> **Auto-Preservation on Major Bumps**:
+> When an unversioned formula undergoes a major version bump (e.g. Node 24 → 26), the sync process automatically detects the major transition, downloads the upstream versioned formula (`Formula/<name>@<prev_version>.rb`, e.g. `node@24.rb`), and adds it to the tap. This ensures previous versions remain installable as `<formula>@<version>` while the main formula advances to the latest release.
+
 ---
 
 ## Workflow Architecture
