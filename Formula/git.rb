@@ -40,8 +40,8 @@ class Git < Formula
   end
 
   on_linux do
-    depends_on "openssl@4" # for git-imap-send (GPL-2.0-or-later), uses CommonCrypto on macOS
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/openssl@4" # for git-imap-send (GPL-2.0-or-later), uses CommonCrypto on macOS
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   resource "Authen::SASL" do

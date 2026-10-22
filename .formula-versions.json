@@ -1,9 +1,10 @@
 {
   "llvm": {
-    "version": "23.1.3",
+    "version": "23.1.3.src",
     "revision": 1,
-    "sha256": "796d77c319829e1accc6f0cf7ed7e47f4243d8ff994f4c52192d7f0aa2b59902",
-    "last_updated": "2026-10-16T14:45:17Z"
+    "sha256": "147b889075017234464addd59514c190ed25ba98c9489a99c10d3021c3c9dc85",
+    "last_updated": "2026-10-22T14:12:09Z",
+    "is_dependency": true
   },
   "gcc": {
     "version": "16.2.0",
@@ -14,8 +15,9 @@
   "xz": {
     "version": "5.8.4",
     "revision": 0,
-    "sha256": "e5b8bbf09dccb4a1f2ee333ed65b13ee773350a26735ef594ca859d2cf85248e",
-    "last_updated": "2026-10-12T20:54:02Z"
+    "sha256": "12cdbbee7aa9f05a051334d108e656c49fca3d811eded64bd0126f23b1527b6e",
+    "last_updated": "2026-10-22T14:12:18Z",
+    "is_dependency": true
   },
   "gh": {
     "version": "2.102.0",
@@ -56,8 +58,9 @@
   "sqlite": {
     "version": "3.54.0",
     "revision": 0,
-    "sha256": "7743f585566847c2bbcd39102713745759bfb1e1f30a4384ac2362fb475e88d3",
-    "last_updated": "2026-10-13T14:57:15Z"
+    "sha256": "e07d630e80fc946167c1999fd70b53fe65139ad9a597474f8d76d012ad3e45ab",
+    "last_updated": "2026-10-22T14:12:16Z",
+    "is_dependency": true
   },
   "gnutls": {
     "version": "3.8.13",
@@ -118,5 +121,152 @@
     "revision": 0,
     "sha256": "b3e6ec47bc327e7d9f132be8b5ee880b64e8128ef3eedb70459677bdedabd18a",
     "last_updated": "2026-10-20T13:09:11Z"
+  },
+  "abseil": {
+    "version": "cpp/archive/refs/tags/20260817.0",
+    "revision": 0,
+    "sha256": "593fc7901a8949808a470c6b505b095cb0944367e64b2db876ea73661e59b3e7",
+    "last_updated": "2026-10-22T14:12:08Z",
+    "is_dependency": true
+  },
+  "cmake": {
+    "version": "4.4.4",
+    "revision": 0,
+    "sha256": "bfea34dcaa8182ea7896c21ea8b8eedd30d52f482aae3364cab2f61aa825c800",
+    "last_updated": "2026-10-22T14:12:08Z",
+    "is_dependency": true
+  },
+  "ada-url": {
+    "version": "11",
+    "revision": 1,
+    "sha256": "52379177f404f68787018154cfee6754b42455bf376830d5c27123946d1a93d5",
+    "last_updated": "2026-10-22T14:12:08Z",
+    "is_dependency": true
+  },
+  "fmt": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "ebc7a265a6d41e1924dcf8251afcaad049030402567914b53da8270132a17a31",
+    "last_updated": "2026-10-22T14:12:08Z",
+    "is_dependency": true
+  },
+  "simdutf": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "e739b144963c62f55e60b1f48e5034c16b47ac1ea27cc2c7bdf21a6dcfeb0865",
+    "last_updated": "2026-10-22T14:12:16Z",
+    "is_dependency": true
+  },
+  "brotli": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "dd52c7983ad63e4f322a3d44f610dec3ada3448583c3c66e35030ebbaee3433c",
+    "last_updated": "2026-10-22T14:12:09Z",
+    "is_dependency": true
+  },
+  "c-ares": {
+    "version": "1.34.9",
+    "revision": 0,
+    "sha256": "0d6e516cdfac37e00bf121e61db1252ef4e8e89593568039862f081bd639e239",
+    "last_updated": "2026-10-22T14:12:09Z",
+    "is_dependency": true
+  },
+  "hdrhistogram_c": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "fb1802ef660c892dd90fe7ec47a14e38ce6e662703f52a39cb96a5b1774cae6f",
+    "last_updated": "2026-10-22T14:12:10Z",
+    "is_dependency": true
+  },
+  "zlib-ng-compat": {
+    "version": "ng/archive/refs/tags/2.3.3",
+    "revision": 1,
+    "sha256": "db29538730c80190fdf87615bfca21a01fcb531071adf75e30d5f0e195832f2d",
+    "last_updated": "2026-10-22T14:12:18Z",
+    "is_dependency": true
+  },
+  "highway": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "4cd06ebd5130b5983d8106f0d51ce97316d8e19dd20cdfd9cf7910932e8ed8d9",
+    "last_updated": "2026-10-22T14:12:11Z",
+    "is_dependency": true
+  },
+  "icu4c@78": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "c4d64e2dec360643443674664512d0a8bce1f3b83e809932a1a29e7eeb6c0f51",
+    "last_updated": "2026-10-22T14:12:12Z",
+    "is_dependency": true
+  },
+  "llhttp": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "fb046c70a9ea6d7d0482c23904078dbcd6a6c56ea57b3c9907c16ac85ba83dc7",
+    "last_updated": "2026-10-22T14:12:13Z",
+    "is_dependency": true
+  },
+  "merve": {
+    "version": "unknown",
+    "revision": 4,
+    "sha256": "2281084d9724c42e4f92e7992ecde90b749f829fa815f1388cada6658c19d194",
+    "last_updated": "2026-10-22T14:12:14Z",
+    "is_dependency": true
+  },
+  "nbytes": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "40a620271610fec80bdb22d0dfa08a6bbd64bbddef864c0e5cc5f4c59a1c622b",
+    "last_updated": "2026-10-22T14:12:14Z",
+    "is_dependency": true
+  },
+  "openssl@4": {
+    "version": "4.0.3",
+    "revision": 0,
+    "sha256": "9e6998cc58157aa31b16144b11b67d686caccd3032d7882a76eccb53ce0730f7",
+    "last_updated": "2026-10-22T14:12:15Z",
+    "is_dependency": true
+  },
+  "ca-certificates": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "535300ac0e99511a36340454bd5287cfff097191de9d7b9675ed924f3a692317",
+    "last_updated": "2026-10-22T14:12:15Z",
+    "is_dependency": true
+  },
+  "simdjson": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "47bbb72484963e208c72cc8b6531713e3587e073b8f00753e3f80951cdce883f",
+    "last_updated": "2026-10-22T14:12:16Z",
+    "is_dependency": true
+  },
+  "readline": {
+    "version": "8.3.6",
+    "revision": 0,
+    "sha256": "9a40380880af912ef7ed63ce129f5b84e79c55e9c787dd42d7f7bbbbaed11bc2",
+    "last_updated": "2026-10-22T14:12:16Z",
+    "is_dependency": true
+  },
+  "uvwasi": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "df4e53e6f0ecc9e9e392da1ffbd119fcce1c9bba6ea03f7786757f71a8dbe39f",
+    "last_updated": "2026-10-22T14:12:17Z",
+    "is_dependency": true
+  },
+  "zstd": {
+    "version": "unknown",
+    "revision": 1,
+    "sha256": "e40f1de5b4e53faf64cad3d24dd74e28948d674caf96b3229310ce78e66b030e",
+    "last_updated": "2026-10-22T14:12:17Z",
+    "is_dependency": true
+  },
+  "lz4": {
+    "version": "unknown",
+    "revision": 0,
+    "sha256": "b45023020f34ac622d84d10e44f1d972f742d5c741098f6ee828b6ab79bd19e4",
+    "last_updated": "2026-10-22T14:12:18Z",
+    "is_dependency": true
   }
 }

@@ -21,36 +21,36 @@ class Node < Formula
 
   depends_on "pkgconf" => :build
   depends_on "python@3.15" => :build
-  depends_on "rust" => :build
-  depends_on "abseil"
-  depends_on "ada-url"
-  depends_on "brotli"
-  depends_on "c-ares"
-  depends_on "hdrhistogram_c"
-  depends_on "icu4c@78"
+  depends_on "jaewoook/nal/rust" => :build
+  depends_on "jaewoook/nal/abseil"
+  depends_on "jaewoook/nal/ada-url"
+  depends_on "jaewoook/nal/brotli"
+  depends_on "jaewoook/nal/c-ares"
+  depends_on "jaewoook/nal/hdrhistogram_c"
+  depends_on "jaewoook/nal/icu4c@78"
   depends_on "libffi" # System `libffi` is missing some definitions used by node
   depends_on "libnghttp2"
   depends_on "libuv"
-  depends_on "llhttp"
-  depends_on "merve"
-  depends_on "nbytes"
-  depends_on "openssl@4"
-  depends_on "simdjson"
-  depends_on "simdutf"
-  depends_on "sqlite" # Fails with macOS sqlite.
-  depends_on "uvwasi"
-  depends_on "zstd"
+  depends_on "jaewoook/nal/llhttp"
+  depends_on "jaewoook/nal/merve"
+  depends_on "jaewoook/nal/nbytes"
+  depends_on "jaewoook/nal/openssl@4"
+  depends_on "jaewoook/nal/simdjson"
+  depends_on "jaewoook/nal/simdutf"
+  depends_on "jaewoook/nal/sqlite" # Fails with macOS sqlite.
+  depends_on "jaewoook/nal/uvwasi"
+  depends_on "jaewoook/nal/zstd"
 
   uses_from_macos "python"
 
   on_macos do
-    depends_on "llvm" => :build if DevelopmentTools.clang_build_version <= 1699
-    depends_on "highway"
+    depends_on "jaewoook/nal/llvm" => :build if DevelopmentTools.clang_build_version <= 1699
+    depends_on "jaewoook/nal/highway"
   end
 
   on_linux do
-    depends_on "highway" => :build
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/highway" => :build
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   link_overwrite "bin/npm", "bin/npx"

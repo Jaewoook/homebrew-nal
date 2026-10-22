@@ -32,10 +32,10 @@ class Llvm < Formula
   keg_only :provided_by_macos
 
   # https://llvm.org/docs/GettingStarted.html#requirement
-  depends_on "cmake" => :build
+  depends_on "jaewoook/nal/cmake" => :build
   depends_on "ninja" => :build
   depends_on "python@3.14" => [:build, :test]
-  depends_on "zstd"
+  depends_on "jaewoook/nal/zstd"
 
   uses_from_macos "libedit"
   uses_from_macos "libffi"
@@ -49,7 +49,7 @@ class Llvm < Formula
   on_linux do
     depends_on "binutils" => :build # needed for LLVMgold plugin
     depends_on "pkgconf" => :build
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   def clang_config_file_dir = etc/"clang"

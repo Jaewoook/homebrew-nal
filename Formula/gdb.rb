@@ -19,9 +19,9 @@ class Gdb < Formula
   depends_on "mpfr"
   depends_on "ncurses" # https://github.com/Homebrew/homebrew-core/issues/224294
   depends_on "python@3.14"
-  depends_on "readline"
+  depends_on "jaewoook/nal/readline"
   depends_on "jaewoook/nal/xz" # required for lzma support
-  depends_on "zstd"
+  depends_on "jaewoook/nal/zstd"
 
   uses_from_macos "expat", since: :sequoia # minimum macOS due to python
 
@@ -38,7 +38,7 @@ class Gdb < Formula
 
   on_linux do
     depends_on "guile"
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   def install

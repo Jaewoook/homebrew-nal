@@ -32,7 +32,7 @@ class Gnupg < Formula
   depends_on "libusb"
   depends_on "npth"
   depends_on "jaewoook/nal/pinentry"
-  depends_on "readline"
+  depends_on "jaewoook/nal/readline"
 
   uses_from_macos "bzip2"
   uses_from_macos "openldap"
@@ -43,7 +43,7 @@ class Gnupg < Formula
   end
 
   on_linux do
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   deny_network_access!

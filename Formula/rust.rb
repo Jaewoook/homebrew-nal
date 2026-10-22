@@ -92,7 +92,7 @@ class Rust < Formula
   depends_on "libgit2"
   depends_on "libssh2"
   depends_on "jaewoook/nal/llvm"
-  depends_on "openssl@4"
+  depends_on "jaewoook/nal/openssl@4"
   depends_on "pkgconf"
   depends_on "jaewoook/nal/sqlite"
 

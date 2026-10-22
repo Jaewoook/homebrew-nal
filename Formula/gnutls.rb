@@ -39,7 +39,7 @@ class Gnutls < Formula
 
   depends_on "pkgconf" => :build
   depends_on "texinfo" => :build
-  depends_on "ca-certificates" => :no_linkage
+  depends_on "jaewoook/nal/ca-certificates" => :no_linkage
   depends_on "gmp"
   depends_on "libidn2"
   depends_on "libtasn1"

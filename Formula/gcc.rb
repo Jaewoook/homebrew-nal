@@ -38,7 +38,7 @@ class Gcc < Formula
   depends_on "isl"
   depends_on "libmpc"
   depends_on "mpfr"
-  depends_on "zstd"
+  depends_on "jaewoook/nal/zstd"
 
   uses_from_macos "flex" => :build
   uses_from_macos "m4" => :build
@@ -50,7 +50,7 @@ class Gcc < Formula
 
   on_linux do
     depends_on "binutils"
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   def version_suffix

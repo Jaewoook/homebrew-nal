@@ -23,10 +23,10 @@ class Sqlite < Formula
 
   keg_only :provided_by_macos
 
-  depends_on "readline"
+  depends_on "jaewoook/nal/readline"
 
   on_linux do
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   deny_network_access!

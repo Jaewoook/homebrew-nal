@@ -33,7 +33,7 @@ class Ffmpeg < Formula
   depends_on "lame"
   depends_on "libvmaf" # dependent: ab-av1
   depends_on "libvpx"
-  depends_on "openssl@4"
+  depends_on "jaewoook/nal/openssl@4"
   depends_on "opus"
   depends_on "sdl2-compat"
   depends_on "svt-av1"
@@ -47,7 +47,7 @@ class Ffmpeg < Formula
   on_linux do
     depends_on "alsa-lib"
     depends_on "libxcb"
-    depends_on "zlib-ng-compat"
+    depends_on "jaewoook/nal/zlib-ng-compat"
   end
 
   on_intel do
