@@ -56,13 +56,12 @@ brew install jaewoook/nal/<formula>@<version>
 
 ## Multiple Version Support
 
-Formulas in `homebrew-nal` support both the latest release (default) and major versioned releases:
+Formulas in `homebrew-nal` support both the latest release (default) and major versioned releases by specifying the target formula name directly:
 
 | Target | Description | Example |
 | :--- | :--- | :--- |
 | **`latest` (default)** | Resolves to the main formula file (`Formula/<name>.rb`). | `node`, `llvm`, `gcc`, `rust` |
-| **Specific Version** | Targets a dedicated versioned formula (`Formula/<name>@<ver>.rb`). | `node@22`, `node@20`, `llvm@18` |
-| **`all` Versions** | Syncs/builds the latest version plus all active versioned formulas discovered via Homebrew Core API. | `node:all`, `llvm:all` |
+| **Specific Version** | Directly targets a versioned formula (`Formula/<name>@<ver>.rb`). | `node@22`, `node@20`, `llvm@18` |
 
 > [!NOTE]
 > **Auto-Preservation on Major Bumps**:
@@ -77,7 +76,7 @@ flowchart TD
     subgraph S1 ["1. Upstream Sync & Dependency Resolution"]
         direction TB
         A["Homebrew Core Upstream"] -->|"Check formula updates"| B["sync-upstream.yml"]
-        B -->|"Strip private directives\nResolve versions: latest / all"| C["Formula/*.rb"]
+        B -->|"Strip private directives\nSync target formula(s)"| C["Formula/*.rb"]
         C -->|"Rewrite depends_on 'jaewoook/nal/*' (--with-deps)"| D["Git Push to main (SYNC_PAT)"]
     end
 
@@ -161,15 +160,10 @@ flowchart TD
 # Check upstream versions without making changes (dry-run)
 ./scripts/sync_formulas.sh --dry-run
 
-# Sync specific formulas (default: latest version)
+# Sync specific formulas (latest version)
 ./scripts/sync_formulas.sh llvm gcc
 
-# Sync all supported versions for a formula (latest + all versioned formulas)
-./scripts/sync_formulas.sh --versions all node
-
-# Sync specific major versions for a formula
-./scripts/sync_formulas.sh --versions 20,22 node
-# Or pass versioned formula names directly:
+# Sync specific versioned formulas directly
 ./scripts/sync_formulas.sh node@22 llvm@18
 
 # Sync formula and automatically register its runtime dependencies

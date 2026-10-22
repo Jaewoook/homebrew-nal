@@ -18,26 +18,7 @@ if [ -n "$FORMULA_INPUT" ]; then
   else
     CLEANED=$(echo "$FORMULA_INPUT" | tr ',' ' ')
     for name in $CLEANED; do
-      if [[ "$name" =~ ^([^:]+):all$ ]]; then
-        base="${BASH_REMATCH[1]}"
-        found=0
-        for f in Formula/${base}.rb Formula/${base}@*.rb; do
-          if [ -f "$f" ]; then
-            TARGETS+=("$(basename "$f" .rb)")
-            found=1
-          fi
-        done
-        if [ "$found" -eq 0 ]; then
-          echo "::warning::No formula found for ${base}:all, skipping."
-        fi
-      elif [[ "$name" =~ ^([^:]+):([0-9].*)$ ]]; then
-        versioned="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
-        if [ -f "Formula/${versioned}.rb" ]; then
-          TARGETS+=("$versioned")
-        else
-          echo "::warning::Formula Formula/${versioned}.rb not found, skipping."
-        fi
-      elif [ -f "Formula/${name}.rb" ]; then
+      if [ -f "Formula/${name}.rb" ]; then
         TARGETS+=("$name")
       else
         echo "::warning::Formula Formula/${name}.rb not found, skipping."

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       formula:
-        description: 'Specific formula to build (e.g. "xz", "node", "node@22", "node:all", or "all"). Multiple formulas can be separated by comma or space.'
+        description: 'Specific formula to build (e.g. "xz", "node", "node@22", or "all"). Multiple formulas can be separated by comma or space.'
         required: false
         default: ''
         type: string
