@@ -58,8 +58,8 @@
   "sqlite": {
     "version": "3.54.0",
     "revision": 0,
-    "sha256": "74404d1f81efc3b1c2ca0efb081cb12e6d52dd799367a906f996e269808b79b1",
-    "last_updated": "2026-10-23T05:12:14Z",
+    "sha256": "bf7f09d34851cd434ed8ffba2ea3255139f2a3232d24ee98118260323b7949ea",
+    "last_updated": "2026-10-23T18:58:21Z",
     "is_dependency": true
   },
   "gnutls": {
@@ -231,7 +231,7 @@
     "version": "8.3.6",
     "revision": 0,
     "sha256": "d485305192b297f98d82a35a730cf3375ca82557b2bd569acade07e93bd6c5c2",
-    "last_updated": "2026-10-23T05:12:14Z",
+    "last_updated": "2026-10-23T18:58:21Z",
     "is_dependency": true
   },
   "uvwasi": {
@@ -288,5 +288,26 @@
     "revision": 0,
     "sha256": "bd807084794cc89ef75696bef58f6b6cb6519a6ed9c1f2a78163bf3b7c331035",
     "last_updated": "2026-10-23T18:58:20Z"
+  },
+  "little-cms2": {
+    "version": "2.19.1",
+    "revision": 0,
+    "sha256": "3fb1fecbc829bddbbadb586f38596b5cd0d6b953469fe56139faabd6fecc35fe",
+    "last_updated": "2026-10-23T18:58:20Z",
+    "is_dependency": true
+  },
+  "jpeg-turbo": {
+    "version": "3.2.0",
+    "revision": 0,
+    "sha256": "7e2e90fde4b71193c517e87763b199f3ebf185afcce4b99d82eee7467e761b8d",
+    "last_updated": "2026-10-23T18:58:21Z",
+    "is_dependency": true
+  },
+  "libtiff": {
+    "version": "4.7.2",
+    "revision": 0,
+    "sha256": "8acf5e0f22700b2c18fb5419721ccc0bf7a202dfc27d5b36543166222589ec3d",
+    "last_updated": "2026-10-23T18:58:21Z",
+    "is_dependency": true
   }
 }

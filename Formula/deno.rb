@@ -33,7 +33,7 @@ class Deno < Formula
   depends_on "ninja" => :build
   depends_on "pkgconf" => :build
   depends_on "rust" => :build
-  depends_on "little-cms2"
+  depends_on "jaewoook/nal/little-cms2"
   depends_on "jaewoook/nal/sqlite" # needs `sqlite3_unlock_notify`
 
   uses_from_macos "python" => :build
