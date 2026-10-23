@@ -282,5 +282,11 @@
     "sha256": "7fa080c800e9dc84fb382a5185714d569cca941e0fdf31a13e01fa6d31d1beae",
     "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
+  },
+  "deno": {
+    "version": "2.9.8",
+    "revision": 0,
+    "sha256": "bd807084794cc89ef75696bef58f6b6cb6519a6ed9c1f2a78163bf3b7c331035",
+    "last_updated": "2026-10-23T18:58:20Z"
   }
 }
