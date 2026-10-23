@@ -2,6 +2,21 @@
 
 A custom [Homebrew](https://brew.sh/) tap providing automated upstream syncing and prebuilt binary bottles for macOS Intel (`x86_64`) on macOS Sequoia (15).
 
+🌐 **Package Registry**: [https://homebrew-nal.jaewook.dev](https://homebrew-nal.jaewook.dev)
+
+---
+
+## Package Registry Web
+
+Explore all available packages, inspect dependencies, and monitor live builder queues through the web registry:
+
+👉 **[https://homebrew-nal.jaewook.dev](https://homebrew-nal.jaewook.dev)**
+
+- 🔍 **Search & Browse**: Instant search across all bottled formulas and major versioned releases.
+- 📋 **Package Details**: Inspect descriptions, licenses, runtime dependencies, bottle sizes, and copy one-click install commands.
+- ⚡ **Live Build Queue**: Real-time status stream of active and historical bottle builds on the runner.
+- 🚀 **On-Demand Dispatch**: Request and trigger automated synchronization and bottle builds directly from the web interface.
+
 ---
 
 ## Background & Motivation
@@ -34,6 +49,9 @@ brew install jaewoook/nal/node      # Installs latest Node
 brew install jaewoook/nal/rust      # Installs latest Rust
 brew install jaewoook/nal/llvm      # Installs latest LLVM
 ```
+
+> [!TIP]
+> Browse the full catalog of available packages and copy install commands directly on the [Package Registry Web](https://homebrew-nal.jaewook.dev).
 
 ### 3. Install Specific Versions
 You can directly target major versioned releases:
