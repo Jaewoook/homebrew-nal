@@ -21,11 +21,9 @@ class AdaUrl < Formula
   head "https://github.com/ada-url/ada.git", branch: "main"
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "128eaf9715ebd44f3225db77cae4b4f4388dbe8e76ba5e43e51e490f0b7028a7"
-    sha256 cellar: :any, arm64_tahoe:       "c47d62dbcf1d8a254f88fab01691998b85fcfa8eb37331dcc672447fa76275cc"
-    sha256 cellar: :any, arm64_sequoia:     "62d2b023afbdc5cc29ce919b2d44b66c4da67c9b5b79460e34ec6f9f324ce387"
-    sha256 cellar: :any, arm64_linux:       "cb222e1daef4716eba8d1bfeb93113e94bc89833357911d2233819c205d1c087"
-    sha256 cellar: :any, x86_64_linux:      "07042596fb78754997f38d3f802818a5917018de3922e75c389748a257e19d58"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/ada-url.4.0.0_1"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "47684ce769c6d67c527279d5ce6a1ab691f2d53362d483b16941427618167b09"
   end
 
   depends_on "cmake" => :build
