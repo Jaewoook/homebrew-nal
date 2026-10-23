@@ -71,4 +71,20 @@ if [ "$CURR_LOCAL_EMAIL" != "original@example.com" ]; then
   exit 1
 fi
 
+# 4. Verify custom bot identity and optional unsigned commit behavior
+cat <<'EOF' > Formula/demo.rb
+class Demo < Formula
+  desc "Demo formula update 2"
+  # second bottle block update
+end
+EOF
+
+BOT_NAME="Custom Builder" BOT_EMAIL="builder@example.com" BOT_GPG_KEY="" bash "$COMMIT_SCRIPT" demo
+
+CUSTOM_AUTHOR=$(git log -1 --format="%an <%ae>")
+if [ "$CUSTOM_AUTHOR" != "Custom Builder <builder@example.com>" ]; then
+  echo "Assertion failed: custom author is '$CUSTOM_AUTHOR', expected 'Custom Builder <builder@example.com>'"
+  exit 1
+fi
+
 echo "All commit_bottle signing and state restoration tests passed!"

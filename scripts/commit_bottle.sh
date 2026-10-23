@@ -4,8 +4,8 @@ set -euo pipefail
 FORMULA_NAME="${1:?Formula name argument required}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
 
-BOT_NAME="NAL Bot"
-BOT_EMAIL="nal-git-system@jaewook.me"
+BOT_NAME="${BOT_NAME:-NAL Bot}"
+BOT_EMAIL="${BOT_EMAIL:-nal-git-system@jaewook.me}"
 BOT_GPG_KEY="${BOT_GPG_KEY:-024D4017DFF5360A}"
 
 # Preserve any existing local git config so the runner machine stays clean
@@ -30,9 +30,19 @@ export GIT_COMMITTER_EMAIL="$BOT_EMAIL"
 GIT_SIGN_ARGS=(
   -c user.name="$BOT_NAME"
   -c user.email="$BOT_EMAIL"
-  -c user.signingkey="$BOT_GPG_KEY"
-  -c commit.gpgsign=true
 )
+
+# Optional GPG signing: sign only if a key is provided and available in GPG keyring
+if [ -n "$BOT_GPG_KEY" ] && gpg --list-secret-keys "$BOT_GPG_KEY" >/dev/null 2>&1; then
+  GIT_SIGN_ARGS+=(
+    -c user.signingkey="$BOT_GPG_KEY"
+    -c commit.gpgsign=true
+  )
+else
+  GIT_SIGN_ARGS+=(
+    -c commit.gpgsign=false
+  )
+fi
 
 git add "Formula/${FORMULA_NAME}.rb"
 if ! git diff --staged --quiet; then
