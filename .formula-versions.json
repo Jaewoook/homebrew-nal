@@ -16,7 +16,7 @@
     "version": "5.8.4",
     "revision": 0,
     "sha256": "12cdbbee7aa9f05a051334d108e656c49fca3d811eded64bd0126f23b1527b6e",
-    "last_updated": "2026-10-23T05:12:14Z",
+    "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
   },
   "gh": {
@@ -244,15 +244,15 @@
   "zstd": {
     "version": "unknown",
     "revision": 1,
-    "sha256": "1e20f6e424cfd45ecec57d9a890556dd26f40de84a1f083800e5e1c86a03ea71",
-    "last_updated": "2026-10-23T05:12:14Z",
+    "sha256": "80ef9465bf7455cbb3a7bd539b816ab8b8f774f6ec4af3610ada55e8a310e59c",
+    "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
   },
   "lz4": {
     "version": "unknown",
     "revision": 0,
-    "sha256": "e335f97eeffa1ecb98b6d6c6e657d768d64a17daa1013cdb82f270abb13a4f2a",
-    "last_updated": "2026-10-23T05:12:14Z",
+    "sha256": "ed3d466b6f493833c87856c85dfbedc4487216f78e41f0db6faff3a3dbb439a0",
+    "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
   },
   "libffi": {
@@ -274,6 +274,13 @@
     "revision": 0,
     "sha256": "ce98fd5a27fe5e0d9114f0d31507c6735a5784974b4aa0f5a6fa59bece96bf84",
     "last_updated": "2026-10-23T05:12:14Z",
+    "is_dependency": true
+  },
+  "z3": {
+    "version": "12",
+    "revision": 0,
+    "sha256": "7fa080c800e9dc84fb382a5185714d569cca941e0fdf31a13e01fa6d31d1beae",
+    "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
   }
 }

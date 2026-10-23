@@ -56,7 +56,7 @@ class Llvm < Formula
   # Z3 needs C++20 std::format which is only available in Xcode 15.3 or later.
   # To avoid a dependency loop, we disable Z3 support on older macOS.
   on_system :linux, macos: :sonoma_or_newer do
-    depends_on "z3"
+    depends_on "jaewoook/nal/z3"
   end
 
   on_linux do
