@@ -20,11 +20,9 @@ class Deno < Formula
   head "https://github.com/denoland/deno.git", branch: "main"
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "a3343ec3247fe01b0d45bfcf4dc5f7a325c15cef2cbc644479f09c562d8d6528"
-    sha256 cellar: :any, arm64_tahoe:       "4da3ac1a16e2b1268c2a55cc19bbef0e5d7a27e81e1ada2dcb54098528e61937"
-    sha256 cellar: :any, arm64_sequoia:     "6a6e59fd10a49d2b1edfd1a9c8911f0e601c0a8d87947821a4f43a74a3ab20be"
-    sha256 cellar: :any, arm64_linux:       "d1fe3c7e5300f86014fb53db6c462bdf19e4656375ad08adbe0fee1f0e6a9f0d"
-    sha256 cellar: :any, x86_64_linux:      "fa4d34ed9e31efac2c294ec99ae42231de25a0935f7d76d35ecbbade79ff99f6"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/deno.2.9.8"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "20daaa43278f7797acfa15fae318083864848f94f583b197c2efc37751a6bbcb"
   end
 
   depends_on "cmake" => :build
