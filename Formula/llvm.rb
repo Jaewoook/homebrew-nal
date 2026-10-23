@@ -35,11 +35,9 @@ class Llvm < Formula
   end
 
   bottle do
-    sha256               arm64_golden_gate: "4005890f2e921a5cacf6f3c0db9bdcfd73b44d8657660386811ae8e33639edfc"
-    sha256               arm64_tahoe:       "a5c46d2e124d1df2edae4a0f304a0af28f2bad257b6077c18cf93987048fb45f"
-    sha256               arm64_sequoia:     "a836e589e11986da5742a3e034df4777feacfa76b1e765488c8feec6f81ce6d6"
-    sha256 cellar: :any, arm64_linux:       "d9d4d08af8c879264b61f8417bffe2bf821d5fd4838ebc1109418cede21d896c"
-    sha256 cellar: :any, x86_64_linux:      "0dd3fc8bba2fee7716b41c29438d17bb6541b0b384c973ea87b750aa9067a9be"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/llvm.23.1.4"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "3a8e3f01de7777cc2b540c21627963aae60699b492a639f39c21bf4338e71ee1"
   end
 
   keg_only :provided_by_macos
