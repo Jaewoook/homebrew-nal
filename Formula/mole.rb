@@ -19,7 +19,7 @@ class Mole < Formula
     sha256 cellar: :any_skip_relocation, sequoia: "b42161ea1d828ec0d36834e8a1540856727b0534edbdb7cd324299fd7819e6a3"
   end
 
-  depends_on "jaewoook/nal/go" => :build
+  depends_on "go" => :build
   depends_on :macos
 
   deny_network_access!

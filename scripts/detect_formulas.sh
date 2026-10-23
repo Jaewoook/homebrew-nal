@@ -27,13 +27,20 @@ if [ -n "$FORMULA_INPUT" ]; then
   fi
 elif [ "$EVENT_NAME" = "push" ]; then
   if [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$EVENT_BEFORE" 2>/dev/null; then
-    CHANGED=$(git diff --name-only "$EVENT_BEFORE" HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
+    RAW_DIFF=$(git diff --name-only "$EVENT_BEFORE" HEAD 2>/dev/null || true)
   else
-    CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
+    RAW_DIFF=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
   fi
+  CHANGED=$(echo "$RAW_DIFF" | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
 
   for name in $CHANGED; do
     if [ -f "Formula/${name}.rb" ]; then
+      if grep -Fq 'root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/' "Formula/${name}.rb"; then
+        if ! echo "$RAW_DIFF" | grep -Eq "^Patches/${name}/"; then
+          echo "Skipping ${name}: bottle block already present for homebrew-nal."
+          continue
+        fi
+      fi
       TARGETS+=("$name")
     fi
   done

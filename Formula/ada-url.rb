@@ -1,3 +1,15 @@
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
+    end
+  end)
+end
+
 class AdaUrl < Formula
   desc "WHATWG-compliant and fast URL parser written in modern C++"
   homepage "https://ada-url.com"
@@ -16,7 +28,7 @@ class AdaUrl < Formula
     sha256 cellar: :any, x86_64_linux:      "07042596fb78754997f38d3f802818a5917018de3922e75c389748a257e19d58"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
   depends_on "cxxopts" => :build
   depends_on "jaewoook/nal/fmt"
   depends_on "jaewoook/nal/simdutf"

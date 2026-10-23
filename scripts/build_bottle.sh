@@ -15,6 +15,7 @@ export CMAKE_APPLE_SILICON_PROCESSOR="x86_64"
 # Disable prompts and auto-update in subshells
 export HOMEBREW_NO_AUTO_UPDATE="1"
 export HOMEBREW_NO_INSTALL_CLEANUP="1"
+export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK="1"
 export HOMEBREW_NO_ASK="1"
 export NONINTERACTIVE="1"
 

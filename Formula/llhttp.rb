@@ -12,7 +12,7 @@ class Llhttp < Formula
     sha256 cellar: :any, sequoia: "270829c2cc2a8d8ebf113d2ad0e4c83edf7fadfbe9ce05f5ec462ff514d80336"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   def install
     system "cmake", "-S", ".", "-B", "build", *std_cmake_args

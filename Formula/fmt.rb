@@ -13,7 +13,7 @@ class Fmt < Formula
     sha256 cellar: :any, sequoia: "e9276e30ae9777e0f9ff9abbef8516148ffb6c98df70307c8088bbfc83f7659c"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   deny_network_access!
 

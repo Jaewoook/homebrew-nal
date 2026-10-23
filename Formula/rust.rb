@@ -1,3 +1,15 @@
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
+    end
+  end)
+end
+
 class Rust < Formula
   desc "Safe, concurrent, practical language"
   homepage "https://www.rust-lang.org/"

@@ -13,7 +13,7 @@ class Highway < Formula
     sha256 cellar: :any, sequoia: "42e0fb944857c8167b07dda6301165b25fb26eb517e30edd3b1a2da44a60e8c7"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   # These used to be bundled with `jpeg-xl`.
   link_overwrite "include/hwy/*", "lib/pkgconfig/libhwy*"

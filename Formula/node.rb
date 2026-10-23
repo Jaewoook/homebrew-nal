@@ -1,3 +1,15 @@
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
+    end
+  end)
+end
+
 class Node < Formula
   desc "Open-source, cross-platform JavaScript runtime environment"
   homepage "https://nodejs.org/"
@@ -21,16 +33,16 @@ class Node < Formula
 
   depends_on "pkgconf" => :build
   depends_on "python@3.15" => :build
-  depends_on "jaewoook/nal/rust" => :build
+  depends_on "rust" => :build
   depends_on "jaewoook/nal/abseil"
   depends_on "jaewoook/nal/ada-url"
   depends_on "jaewoook/nal/brotli"
   depends_on "jaewoook/nal/c-ares"
   depends_on "jaewoook/nal/hdrhistogram_c"
   depends_on "jaewoook/nal/icu4c@78"
-  depends_on "libffi" # System `libffi` is missing some definitions used by node
-  depends_on "libnghttp2"
-  depends_on "libuv"
+  depends_on "jaewoook/nal/libffi" # System `libffi` is missing some definitions used by node
+  depends_on "jaewoook/nal/libnghttp2"
+  depends_on "jaewoook/nal/libuv"
   depends_on "jaewoook/nal/llhttp"
   depends_on "jaewoook/nal/merve"
   depends_on "jaewoook/nal/nbytes"
@@ -44,13 +56,13 @@ class Node < Formula
   uses_from_macos "python"
 
   on_macos do
-    depends_on "jaewoook/nal/llvm" => :build if DevelopmentTools.clang_build_version <= 1699
+    depends_on "llvm" => :build if DevelopmentTools.clang_build_version <= 1699
     depends_on "jaewoook/nal/highway"
   end
 
   on_linux do
-    depends_on "jaewoook/nal/highway" => :build
-    depends_on "jaewoook/nal/zlib-ng-compat"
+    depends_on "highway" => :build
+    depends_on "zlib-ng-compat"
   end
 
   link_overwrite "bin/npm", "bin/npx"

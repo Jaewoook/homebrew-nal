@@ -18,7 +18,7 @@ class Gh < Formula
     sha256 cellar: :any_skip_relocation, sequoia: "f30146d27cb1e7d63e68e2730a2264f05cb952b094bb8654a3dd74c980cced41"
   end
 
-  depends_on "jaewoook/nal/go" => :build
+  depends_on "go" => :build
 
   deny_network_access! [:postinstall, :test]
 

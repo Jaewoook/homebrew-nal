@@ -18,7 +18,7 @@ class CAres < Formula
     sha256 cellar: :any, sequoia: "a82645df2f85d2803f2b69e756affe2852ce753b2a8dd64452cdaa085a93c069"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   def install
     args = %W[

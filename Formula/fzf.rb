@@ -13,7 +13,7 @@ class Fzf < Formula
     sha256 cellar: :any_skip_relocation, sequoia: "f00bf4f2c1e3c90d7f0b4d493a6b61dafbb35b7b0b208541d954ea5f9b9c7ce7"
   end
 
-  depends_on "jaewoook/nal/go" => :build
+  depends_on "go" => :build
 
   uses_from_macos "ncurses"
 

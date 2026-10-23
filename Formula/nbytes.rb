@@ -11,7 +11,7 @@ class Nbytes < Formula
     sha256 cellar: :any, sequoia: "07946d745a64eaecd4283503180e42c23caec20f98e2d44df5b8e890245c1ae2"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   deny_network_access!
 

@@ -12,10 +12,10 @@ class HdrhistogramC < Formula
     sha256 cellar: :any, sequoia: "5f1b1ea304b75b902cdc0a413cd1a055d50f797f8bb8a613dd403758d97a2174"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   on_linux do
-    depends_on "jaewoook/nal/zlib-ng-compat"
+    depends_on "zlib-ng-compat"
   end
 
   def install

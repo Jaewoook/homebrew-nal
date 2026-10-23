@@ -19,7 +19,7 @@ class Lz4 < Formula
     sha256 cellar: :any, sequoia: "840476f92571e6219b823998b93233a67a54d2606c43797ed5a70c909c8e2893"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   deny_network_access!
 

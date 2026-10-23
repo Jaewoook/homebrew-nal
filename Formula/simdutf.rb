@@ -18,7 +18,7 @@ class Simdutf < Formula
     sha256 cellar: :any, sequoia: "aefe8799743377a1933b7f386d72662d2a58918e3165ff6cd5a9cb3de278522e"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   def install
     # C++20 is needed by `node`

@@ -12,7 +12,7 @@ class Simdjson < Formula
     sha256 cellar: :any, sequoia: "2e30c276ba79ce2eb4ef0cf4226953bc1f607168f3e364ac3bb3fd31364037cb"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
 
   deny_network_access!
 

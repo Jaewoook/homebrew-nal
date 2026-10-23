@@ -18,7 +18,7 @@ class Abseil < Formula
     sha256 cellar: :any, x86_64_linux:      "3e6674009eb50e1638f9d2edca486de98a4698ca508b8a26834aaf9d29cc9253"
   end
 
-  depends_on "jaewoook/nal/cmake" => [:build, :test]
+  depends_on "cmake" => [:build, :test]
   depends_on "googletest" => :build # For test helpers
 
   deny_network_access!

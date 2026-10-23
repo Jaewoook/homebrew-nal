@@ -1,3 +1,15 @@
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
+    end
+  end)
+end
+
 class Uvwasi < Formula
   desc "WASI syscall API built atop libuv"
   homepage "https://github.com/nodejs/uvwasi"
@@ -18,8 +30,8 @@ class Uvwasi < Formula
     sha256 cellar: :any_skip_relocation, x86_64_linux:      "2befd108f0cf4fffab4832dc834e0b7c4b8aec470ad95994435792c6b3ab9bcc"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
-  depends_on "libuv"
+  depends_on "cmake" => :build
+  depends_on "jaewoook/nal/libuv"
 
   # Remove find_dependency for a not-installed module in CMake config
   patch do

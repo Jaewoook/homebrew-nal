@@ -82,13 +82,21 @@ fetch_upstream_formula() {
 
   local first_char
   first_char=$(printf "%s" "${dep:0:1}" | tr '[:upper:]' '[:lower:]')
+  local lib_url="${UPSTREAM_BASE}/Formula/lib/${dep}.rb"
   local sharded_url="${UPSTREAM_BASE}/Formula/${first_char}/${dep}.rb"
   local root_url="${UPSTREAM_BASE}/Formula/${dep}.rb"
 
   local tmp
   tmp=$(mktemp)
 
-  if curl -sSfL "$sharded_url" -o "$tmp" 2>/dev/null || curl -sSfL "$root_url" -o "$tmp" 2>/dev/null; then
+  local fetched=false
+  if [[ "$dep" == lib* ]] && curl -sSfL "$lib_url" -o "$tmp" 2>/dev/null; then
+    fetched=true
+  elif curl -sSfL "$sharded_url" -o "$tmp" 2>/dev/null || curl -sSfL "$root_url" -o "$tmp" 2>/dev/null; then
+    fetched=true
+  fi
+
+  if [ "$fetched" = true ]; then
     # Sanitize directives not permitted in custom taps
     grep -v -E '^[[:space:]]*no_autobump!' "$tmp" > "$dest"
     rm -f "$tmp"
@@ -102,9 +110,26 @@ fetch_upstream_formula() {
 extract_runtime_deps() {
   local rb_file="$1"
   [ -f "$rb_file" ] || return 0
-  # Extract names from: depends_on "name" (ignoring => :build and => :test)
-  grep -E '^[[:space:]]*depends_on[[:space:]]+"[^"]+"' "$rb_file" 2>/dev/null \
-    | grep -v -E '=>[[:space:]]*:(build|test)' \
+  # Strip on_linux blocks and extract runtime depends_on (ignoring :build and :test, including array syntax like [:build, :test])
+  awk '
+    /^[[:space:]]*on_linux[[:space:]]+do([[:space:]]|$)/ {
+      in_linux = 1
+      match($0, /^[[:space:]]*/)
+      linux_indent = RLENGTH
+      next
+    }
+    in_linux {
+      match($0, /^[[:space:]]*/)
+      if (RLENGTH == linux_indent && $0 ~ /^[[:space:]]*end([[:space:]]|$)/) {
+        in_linux = 0
+      }
+      next
+    }
+    { print }
+  ' "$rb_file" 2>/dev/null \
+    | grep -E '^[[:space:]]*depends_on[[:space:]]+"[^"]+"' 2>/dev/null \
+    | grep -v -E '=>.*:(build|test)' \
+    | grep -v -E 'if[[:space:]]+DevelopmentTools\.clang_build_version[[:space:]]*<=[[:space:]]*1500' \
     | sed -E 's/^[[:space:]]*depends_on[[:space:]]+"([^"]+)".*/\1/' \
     | sed "s|^${TAP_NAME}/||" \
     | sort -u || true

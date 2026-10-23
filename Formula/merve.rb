@@ -1,3 +1,15 @@
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
+    end
+  end)
+end
+
 class Merve < Formula
   desc "C++ lexer for extracting named exports from CommonJS modules"
   homepage "https://github.com/nodejs/merve"
@@ -12,7 +24,7 @@ class Merve < Formula
     sha256 cellar: :any, sequoia: "71da9691f644709cb4141b904bbfd73bd67c053e7b51a901b86bb2473aed55aa"
   end
 
-  depends_on "jaewoook/nal/cmake" => :build
+  depends_on "cmake" => :build
   depends_on "jaewoook/nal/simdutf"
 
   deny_network_access!

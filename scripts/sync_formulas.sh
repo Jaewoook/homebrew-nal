@@ -243,14 +243,17 @@ for FORMULA in $FORMULAS; do
   LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
 
   # 1. Fetch upstream formula file (.rb)
-  # Homebrew-core shards formulas by first letter (Formula/<letter>/<formula>.rb)
+  # Homebrew-core shards formulas by first letter (Formula/<letter>/<formula>.rb) or Formula/lib/<formula>.rb
   FIRST_CHAR=$(printf "%s" "${FORMULA:0:1}" | tr '[:upper:]' '[:lower:]')
+  LIB_URL="${UPSTREAM_RAW_BASE}/Formula/lib/${FORMULA}.rb"
   SHARDED_URL="${UPSTREAM_RAW_BASE}/Formula/${FIRST_CHAR}/${FORMULA}.rb"
   ROOT_URL="${UPSTREAM_RAW_BASE}/Formula/${FORMULA}.rb"
 
   TMP_RB=$(mktemp)
   SOURCE_URL=""
-  if curl -sSfL "$SHARDED_URL" -o "$TMP_RB" 2>/dev/null; then
+  if [[ "$FORMULA" == lib* ]] && curl -sSfL "$LIB_URL" -o "$TMP_RB" 2>/dev/null; then
+    SOURCE_URL="$LIB_URL"
+  elif curl -sSfL "$SHARDED_URL" -o "$TMP_RB" 2>/dev/null; then
     SOURCE_URL="$SHARDED_URL"
   elif curl -sSfL "$ROOT_URL" -o "$TMP_RB" 2>/dev/null; then
     SOURCE_URL="$ROOT_URL"
@@ -365,12 +368,15 @@ for FORMULA in $FORMULAS; do
       fi
 
       CANDIDATE_CHAR=$(printf "%s" "${CANDIDATE:0:1}" | tr '[:upper:]' '[:lower:]')
+      CANDIDATE_LIB="${UPSTREAM_RAW_BASE}/Formula/lib/${CANDIDATE}.rb"
       CANDIDATE_SHARDED="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE_CHAR}/${CANDIDATE}.rb"
       CANDIDATE_ROOT="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE}.rb"
 
       TMP_CANDIDATE=$(mktemp)
       CANDIDATE_FOUND=false
-      if curl -sSfL "$CANDIDATE_SHARDED" -o "$TMP_CANDIDATE" 2>/dev/null || curl -sSfL "$CANDIDATE_ROOT" -o "$TMP_CANDIDATE" 2>/dev/null; then
+      if [[ "$CANDIDATE" == lib* ]] && curl -sSfL "$CANDIDATE_LIB" -o "$TMP_CANDIDATE" 2>/dev/null; then
+        CANDIDATE_FOUND=true
+      elif curl -sSfL "$CANDIDATE_SHARDED" -o "$TMP_CANDIDATE" 2>/dev/null || curl -sSfL "$CANDIDATE_ROOT" -o "$TMP_CANDIDATE" 2>/dev/null; then
         CANDIDATE_FOUND=true
       fi
 
@@ -410,6 +416,16 @@ for FORMULA in $FORMULAS; do
 
   # Apply update
   mv "$TMP_RB" "$LOCAL_PATH"
+
+  # Qualify any existing tap runtime dependencies in the updated formula(s)
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/qualify_dependencies.sh" ]]; then
+    QUALIFY_ARGS=(--formula-dir "$FORMULA_DIR" "$FORMULA")
+    if [[ -n "$PRESERVED_CANDIDATE_PATH" && -f "$PRESERVED_CANDIDATE_PATH" ]]; then
+      QUALIFY_ARGS+=("$(basename "$PRESERVED_CANDIDATE_PATH" .rb)")
+    fi
+    bash "$SCRIPT_DIR/qualify_dependencies.sh" "${QUALIFY_ARGS[@]}" >/dev/null
+  fi
 
   # Fetch any patches referenced by the formula in Patches/
   PATCH_FILES=$(grep -oE 'Patches/[^"'\'' ]+' "$LOCAL_PATH" 2>/dev/null || true)
