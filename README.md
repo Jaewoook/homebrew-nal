@@ -7,186 +7,127 @@ A custom [Homebrew](https://brew.sh/) tap providing automated upstream syncing a
 ## Background & Motivation
 
 According to the official [Homebrew Support Tiers](https://docs.brew.sh/Support-Tiers) documentation:
-- **Tier 3 Classification**: macOS on Intel (`x86_64`) is classified as a Tier 3 configuration ("CI coverage is unavailable; bottles will rarely be built or published").
-- **Discontinued Intel Bottles**: In alignment with Apple phasing out Intel hardware, Homebrew has stopped building new bottles for Intel systems, and plans to remove support for running Homebrew on Intel in or after September 2027. While existing bottles may still work, updated formulae build from source.
+- **Tier 3 Classification**: macOS on Intel (`x86_64`) is classified as Tier 3 ("CI coverage is unavailable; bottles will rarely be built or published").
+- **Discontinued Intel Bottles**: In alignment with Apple phasing out Intel hardware, Homebrew has stopped publishing new binary bottles for Intel Macs, forcing formulae to compile from source.
 
-Without prebuilt bottles, running `brew install` for massive compiler suites (LLVM, GCC) or developer utilities on Intel Macs forces Homebrew to compile entirely from source. This process takes hours, consumes tens of gigabytes of disk space, and frequently fails due to missing build dependencies in Superenv.
+Without prebuilt bottles, running `brew install` for massive developer packages (LLVM, GCC, Node, Rust) compiles entirely from source. This process takes hours, consumes tens of gigabytes of disk space, and frequently fails due to missing build dependencies in Superenv.
 
-This tap solves that problem by:
-1. **Syncing Formulas**: Tracking upstream `Homebrew/homebrew-core` for version updates via an automated monthly schedule or manual dispatch.
-2. **Sanitizing Tap Formulas**: Automatically stripping official-tap-only DSL directives (such as `no_autobump!`) to keep custom tap loading clean.
-3. **Resolving & Qualifying Dependencies**: Automatically importing runtime dependencies and rewriting unqualified dependencies (`depends_on "foo"`) to tap-qualified declarations (`depends_on "jaewoook/nal/foo"`), ensuring Intel Macs pour prebuilt binary bottles for the full dependency tree rather than building unbottled core dependencies from source.
-4. **Topological Prebuilding**: Sorting build queues so prerequisite dependencies are bottled before dependents on a dedicated self-hosted macOS runner.
-5. **Publishing Bottles**: Hosting bottle archives on GitHub Releases and committing bottle blocks back to formulas for instant installation.
+**`homebrew-nal`** solves this by maintaining a dedicated self-hosted macOS Intel builder that continuously mirrors upstream `homebrew-core`, packages prebuilt binary bottles, and pours them instantly on your Mac with **zero source compilation**.
 
 ---
 
 ## Client Usage
 
+### 1. Tap the Repository
 ```bash
-# Tap the repository
 brew tap jaewoook/nal
-
-# Install latest version (default)
-brew install jaewoook/nal/<formula>
-# Examples:
-#   brew install jaewoook/nal/node      # Installs latest Node (e.g. 26.x)
-#   brew install jaewoook/nal/rust      # Installs latest Rust (e.g. 1.99.x)
-#   brew install jaewoook/nal/llvm      # Installs latest LLVM (e.g. 23.x)
-
-# Install specific versioned formula
-brew install jaewoook/nal/<formula>@<version>
-# Examples:
-#   brew install jaewoook/nal/node@22   # Installs Node 22 LTS
-#   brew install jaewoook/nal/llvm@18   # Installs LLVM 18
-#   brew install jaewoook/nal/python@3.14
 ```
 
-> [!TIP]
-> **Switching from `homebrew/core`**:
-> If a formula was previously installed from `homebrew/core`, Homebrew disallows installing the same formula name from another tap simultaneously. To switch to this tap's prebuilt version:
-> ```bash
-> brew uninstall <formula>
-> brew install jaewoook/nal/<formula>
-> # Or directly switch taps:
-> brew reinstall jaewoook/nal/<formula>
-> ```
+### 2. Install Packages
+Install latest version:
+```bash
+brew install jaewoook/nal/<formula>
+```
+*Examples:*
+```bash
+brew install jaewoook/nal/node      # Installs latest Node
+brew install jaewoook/nal/rust      # Installs latest Rust
+brew install jaewoook/nal/llvm      # Installs latest LLVM
+```
 
----
-
-## Multiple Version Support
-
-Formulas in `homebrew-nal` support both the latest release (default) and major versioned releases by specifying the target formula name directly:
-
-| Target | Description | Example |
-| :--- | :--- | :--- |
-| **`latest` (default)** | Resolves to the main formula file (`Formula/<name>.rb`). | `node`, `llvm`, `gcc`, `rust` |
-| **Specific Version** | Directly targets a versioned formula (`Formula/<name>@<ver>.rb`). | `node@22`, `node@20`, `llvm@18` |
+### 3. Install Specific Versions
+You can directly target major versioned releases:
+```bash
+brew install jaewoook/nal/<formula>@<version>
+```
+*Examples:*
+```bash
+brew install jaewoook/nal/node@22   # Installs Node 22 LTS
+brew install jaewoook/nal/llvm@18   # Installs LLVM 18
+brew install jaewoook/nal/python@3.14
+```
 
 > [!NOTE]
-> **Auto-Preservation on Major Bumps**:
-> When an unversioned formula undergoes a major version bump (e.g. Node 24 → 26), the sync process automatically detects the major transition, downloads the upstream versioned formula (`Formula/<name>@<prev_version>.rb`, e.g. `node@24.rb`), and adds it to the tap. This ensures previous versions remain installable as `<formula>@<version>` while the main formula advances to the latest release.
+> **Major Version Auto-Preservation**:
+> When an unversioned formula advances its major version upstream (e.g. Node 24 → 26), previous versions are automatically preserved as `<formula>@<prev_version>` (e.g. `node@24`), ensuring your existing workflows continue to install reliably.
 
 ---
 
-## Workflow Architecture
+## Switching from `homebrew/core`
 
-```mermaid
-flowchart TD
-    subgraph S1 ["1. Upstream Sync & Dependency Resolution"]
-        direction TB
-        A["Homebrew Core Upstream"] -->|"Check formula updates"| B["sync-upstream.yml"]
-        B -->|"Strip private directives\nSync target formula(s)"| C["Formula/*.rb"]
-        C -->|"Rewrite depends_on 'jaewoook/nal/*' (--with-deps)"| D["Git Push to main (SYNC_PAT)"]
-    end
-
-    subgraph S2 ["2. Automated Bottle Build (macOS x86_64 Runner)"]
-        direction TB
-        D -->|"Triggers build matrix"| E["detect_formulas.sh\n(Topological Sort)"]
-        E -->|"Build prerequisites first"| F["build.yml (Runner Matrix)"]
-        F -->|"brew bottle --root-url\n(adopt kegs or compile)"| G["Generate Bottle Archive"]
-        G -->|"1. Commit bottle block"| H["main branch"]
-        G -->|"2. Upload .tar.gz asset"| I["GitHub Releases"]
-    end
-
-    subgraph S3 ["3. Intel Mac Client Installation"]
-        direction TB
-        H & I -->|"brew install jaewoook/nal/<formula>"| J["Download Pre-built Bottle"]
-        J -->|"Instant binary pour\nZero source compilation"| K["Installed & Ready"]
-    end
-
-    S1 --> S2 --> S3
-```
-
-### 1. Upstream Synchronization (`sync-upstream.yml`)
-- Runs on a monthly cron schedule or manual dispatch.
-- Downloads updated formula files from `Homebrew/homebrew-core`.
-- Strips official-tap-only DSL directives (e.g. `no_autobump!`) and records version state in [`.formula-versions.json`](.formula-versions.json).
-- **Opt-in Dependency Sync (`with_deps`)**: When enabled, automatically discovers runtime dependencies, imports missing formulas into `Formula/`, marks them with `"is_dependency": true`, and rewrites references to `depends_on "jaewoook/nal/<dep>"`.
-- Pushes commits to `main` using `SYNC_PAT` so downstream build workflows are triggered automatically.
-
-### 2. Bottle Build & Release Pipeline (`build.yml`)
-- Triggered by pushes to `Formula/**` or manual dispatch.
-- **Topological Matrix Ordering**: Uses `scripts/detect_formulas.sh` to sort target formulas so dependencies build and release before their dependents.
-- **Runner Auto-Trust & Keg Adoption**: Ensures tap and formula trust (`brew trust`) on modern Homebrew, and reuses matching Cellar kegs for instant bottle packaging without recompilation.
-- **Commit First, Release Second**: Merges and pushes the bottle block to `main` first, then attaches the GitHub Release asset directly to the resulting commit SHA. This ensures release tags always point directly to their respective bottle block commits.
-
----
-
-## Host & Runner Requirements
-
-### 1. Build Environment Setup
-
-1. **System & Architecture**:
-   - macOS 15 (Sequoia) on Intel (`x86_64`) or Apple Silicon running Intel Homebrew under Rosetta 2 (`arch -x86_64`).
-   - At least **20 GB of free disk space** for intermediate compiler build objects.
-
-2. **Intel Homebrew Installation**:
-   ```bash
-   arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-   ```
-
-3. **Developer Tools**:
-   - **Command Line Tools (CLT)**: Sufficient for all standard CLI formulas (`xcode-select --install`).
-   - **Full Xcode (Xcode 16+)**: Required only for formulas building native macOS Cocoa GUI bundles (such as `pinentry-mac`) that depend on Interface Builder (`ibtool`):
-     ```bash
-     sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-     sudo xcodebuild -license accept
-     ```
-
----
-
-### 2. GitHub Repository & Secrets Setup
-
-- **Workflow Permissions**: In **Settings → Actions → General**, set Workflow permissions to **Read and write permissions** and allow creating pull requests.
-- **Personal Access Token (`SYNC_PAT`)**: GitHub Actions blocks pushes by the default `GITHUB_TOKEN` from triggering other workflows. Generate a fine-grained PAT (or classic token with `public_repo` scope) with `Contents: Read and write`, and add it as a repository secret named `SYNC_PAT`.
-
----
-
-### 3. Self-Hosted Runner Notes
-
-- On modern macOS, start the runner LaunchAgent with:
-  ```bash
-  SVC_LABEL=$(basename ~/Library/LaunchAgents/actions.runner.*.plist .plist)
-  launchctl kickstart -kp "gui/$(id -u)/$SVC_LABEL"
-  ```
-- Enable **Automatic Login** in **System Settings → Users & Groups** and disable system sleep (`sudo pmset -a disablesleep 1`) so the builder stays online across reboots.
-
----
-
-## Local Script Usage
+If a package was previously installed from `homebrew/core`, Homebrew prevents installing the same formula name from another tap simultaneously. To switch to `homebrew-nal`'s prebuilt bottle:
 
 ```bash
-# Check upstream versions without making changes (dry-run)
-./scripts/sync_formulas.sh --dry-run
+# Directly switch to the tap's bottle:
+brew reinstall jaewoook/nal/<formula>
 
-# Sync specific formulas (latest version)
-./scripts/sync_formulas.sh llvm gcc
-
-# Sync specific versioned formulas directly
-./scripts/sync_formulas.sh node@22 llvm@18
-
-# Sync formula and automatically register its runtime dependencies
-./scripts/sync_formulas.sh --with-deps node
-
-# Register specific formulas explicitly as dependencies
-./scripts/sync_formulas.sh --as-dependency c-ares libuv
-
-# Resolve and download runtime dependencies for local formulas
-./scripts/sync_dependencies.sh node
-
-# Re-qualify tap dependencies (depends_on "foo" -> depends_on "jaewoook/nal/foo")
-./scripts/qualify_dependencies.sh
-
-# Force sync and commit changes locally
-./scripts/sync_formulas.sh --force --commit
-
-# Sync, commit, and push directly to main
-./scripts/sync_formulas.sh --commit --push
+# Or cleanly uninstall from core first:
+brew uninstall <formula>
+brew install jaewoook/nal/<formula>
 ```
+
+---
+
+## Client FAQ & Troubleshooting
+
+<details>
+<summary><b>Q: Does this replace or modify my Homebrew installation?</b></summary>
+
+No. `homebrew-nal` is a standard Homebrew tap. It operates cleanly inside your existing Homebrew prefix (`/usr/local`) without requiring any system modifications or patched Homebrew binaries.
+</details>
+
+<details>
+<summary><b>Q: Why does Homebrew display an Intel x86_64 deprecation warning during installation?</b></summary>
+
+Upstream Homebrew 4.x displays a notice warning that macOS Intel support is Tier 3 and bottles are no longer provided by Homebrew maintainers. This is an informational notice from Homebrew core. `homebrew-nal` exists specifically to provide the bottles that upstream discontinued.
+</details>
+
+<details>
+<summary><b>Q: How do I verify a bottle was poured instead of compiling from source?</b></summary>
+
+When installing, Homebrew prints:
+```text
+==> Pouring <formula>--<version>.sequoia.bottle.tar.gz
+```
+You can also run `brew info jaewoook/nal/<formula>` to see the installed bottle tag.
+</details>
+
+---
+
+## How It Works
+
+```mermaid
+flowchart LR
+    subgraph Upstream ["1. Upstream Mirroring"]
+        direction TB
+        A["Homebrew Core"] -->|"Sync updates\nStrip private DSL"| B["Formula/*.rb"]
+        B -->|"Rewrite runtime deps\nto jaewoook/nal/*"| C["Commit & Push"]
+    end
+
+    subgraph Builder ["2. Automated Builder (macOS x86_64)"]
+        direction TB
+        C -->|"Topological build matrix"| D["Self-Hosted Runner"]
+        D -->|"Prebuild binary bottles"| E["GitHub Releases"]
+        D -->|"Commit bottle block"| F["main branch"]
+    end
+
+    subgraph Client ["3. Intel Mac Client"]
+        direction TB
+        E & F -->|"brew install jaewoook/nal/<formula>"| G["Instant Binary Pour\nZero Source Compilation"]
+    end
+
+    Upstream --> Builder --> Client
+```
+
+---
+
+## Project Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Deep dive into the internal design, including dynamic diamond dependency deduplication (`NAL_TAP_DEDUP`), AST dependency qualification, topological sorting, and Homebrew Cellar locking mechanics.
+- **[HOST_SETUP.md](HOST_SETUP.md)**: Guide for setting up the self-hosted macOS Intel builder, configuring GitHub Actions secrets (`SYNC_PAT`), managing runner services, optional bot committer & GPG signing, and running local maintenance scripts.
 
 ---
 
 ## License
 
-This repository and tap scripts are licensed under the MIT License. Individual formulas and upstream code retain their respective upstream licenses.
+This project and its tap scripts are licensed under the [MIT License](LICENSE). Individual formulas and upstream packages retain their respective upstream licenses.
