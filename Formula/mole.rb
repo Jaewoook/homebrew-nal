@@ -14,9 +14,9 @@ class Mole < Formula
 
 
   bottle do
-    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "22cc0e81585a365ecda78981e4774b0ea2d0e90e11914db48917b6bd40feb698"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:       "e30a975196ca228a0632bf85d3dcd18b819153707468daf5454f1107813edc5a"
-    sha256 cellar: :any_skip_relocation, arm64_sequoia:     "475a279914b47f8ecb2c3e696583175d2ed0071895895f7f9cf80ed5365ce8ac"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/mole.1.64.0"
+    rebuild 1
+    sha256 cellar: :any_skip_relocation, sequoia: "993592d6bc33445478243781a7624e9206b4c110f498781337dfe123bf5848b9"
   end
 
   depends_on "go" => :build
