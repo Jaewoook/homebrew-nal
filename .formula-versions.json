@@ -93,10 +93,10 @@
     "last_updated": "2026-10-13T23:56:29Z"
   },
   "mole": {
-    "version": "1.59.1",
+    "version": "1.64.0",
     "revision": 0,
-    "sha256": "d5cc61ccc0a8643be867dd1aabee7069d22e549b90c0999ea8c5a945940452cb",
-    "last_updated": "2026-10-13T23:56:32Z"
+    "sha256": "d7ec27a10f8723213e1c33bb4717e19aa1d319c490ab712f397750f05ec781fe",
+    "last_updated": "2026-10-25T12:29:36Z"
   },
   "ffmpeg": {
     "version": "9.0.2",

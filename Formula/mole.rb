@@ -1,8 +1,8 @@
 class Mole < Formula
   desc "Deep clean and optimize your Mac"
   homepage "https://mole.fit"
-  url "https://github.com/tw93/Mole/archive/refs/tags/V1.59.1.tar.gz"
-  sha256 "6c114193a1f3b61c4cee3910b10b6a91beafbcff6aa300f4e7decc42c272bf27"
+  url "https://github.com/tw93/Mole/archive/refs/tags/V1.64.0.tar.gz"
+  sha256 "856f9943f3e88282411f6cae04b343ca55a0fb1d63e8ab6831dd7bf836a0413e"
   license "GPL-3.0-or-later"
   head "https://github.com/tw93/Mole.git", branch: "main"
 
@@ -14,9 +14,9 @@ class Mole < Formula
 
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/mole.1.59.1"
-    rebuild 1
-    sha256 cellar: :any_skip_relocation, sequoia: "b42161ea1d828ec0d36834e8a1540856727b0534edbdb7cd324299fd7819e6a3"
+    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "22cc0e81585a365ecda78981e4774b0ea2d0e90e11914db48917b6bd40feb698"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:       "e30a975196ca228a0632bf85d3dcd18b819153707468daf5454f1107813edc5a"
+    sha256 cellar: :any_skip_relocation, arm64_sequoia:     "475a279914b47f8ecb2c3e696583175d2ed0071895895f7f9cf80ed5365ce8ac"
   end
 
   depends_on "go" => :build
