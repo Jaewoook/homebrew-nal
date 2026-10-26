@@ -28,32 +28,62 @@ flowchart TD
 
 ---
 
-### The Solution: `NAL_TAP_DEDUP` Runtime Hook
+### The Solution: `NAL_TAP_DEDUP` & In-Flight Tap Migration Hooks
 
-Rather than requiring users or runners to modify the core Homebrew installation, tap formulas containing qualified dependencies dynamically inject a lightweight, idempotent runtime hook at formula load time:
+Rather than requiring users or runners to modify the core Homebrew installation, tap formulas containing qualified dependencies dynamically inject lightweight, idempotent runtime hooks at formula load time:
 
 ```ruby
-unless defined?(NAL_TAP_DEDUP)
-  NAL_TAP_DEDUP = true
-  Homebrew::CLI::NamedArgs if false
-  module NALDependencyDedup
-    def merge_repeats(deps)
-      grouped = deps.group_by { |d| Utils.name_from_full_name(d.name) }
-      grouped.map do |_short_name, group|
-        tap_dep = group.find { |d| d.name.start_with?("jaewoook/nal/") }
-        tap_dep || super(group).first
-      end.compact
+unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
+  Dependency.singleton_class.prepend(Module.new do
+    const_set(:NAL_TAP_DEDUP, true)
+    def merge_repeats(all)
+      all.group_by { |d| Utils.name_from_full_name(d.name) }.filter_map do |_, deps|
+        pref = deps.find { |d| d.name.start_with?("jaewoook/nal/") } || deps.first
+        pref&.class&.new(pref.name, merge_tags(deps), **(pref.uses_from_macos? ? { bounds: pref.bounds } : {}))
+      end
     end
+  end)
+
+  begin
+    require "formula_installer"
+    FormulaInstaller.prepend(Module.new do
+      def install_dependency(dep, dep_formula = dep.to_formula)
+        if dep_formula.tap&.to_s&.start_with?("jaewoook/nal")
+          keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
+          keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
+          keg_paths.uniq.each do |keg_path|
+            next unless keg_path&.directory?
+
+            target = keg_path.symlink? ? Utils::Path.resolved_path(keg_path) : keg_path
+            begin
+              keg = Keg.new(target)
+              if keg.tab&.source.is_a?(Hash) && keg.tab.source["tap"] == "homebrew/core"
+                keg.tab.source["tap"] = dep_formula.tap.to_s
+                keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
+              end
+            rescue StandardError
+            end
+          end
+        end
+        super
+      end
+    end)
+  rescue LoadError
   end
-  Dependency.singleton_class.prepend(NALDependencyDedup)
 end
 ```
 
 #### How it Works:
-- **Grouping by Short Name**: Replaces exact full-name grouping with `Utils.name_from_full_name(d.name)` (e.g. `jaewoook/nal/icu4c@78` and `icu4c@78` group to `icu4c@78`).
-- **Tap Priority**: If a group contains a tap-qualified dependency (`jaewoook/nal/*`), it is selected over the unqualified core dependency, ensuring prebuilt bottles are poured.
-- **Idempotency**: Guarded by `unless defined?(NAL_TAP_DEDUP)` so multiple formula loads in the same Ruby process evaluate safely without overhead or redefinition warnings.
-- **Global Compatibility**: Feeds both `formula.recursive_dependencies` (used by `FormulaInstaller#lock`) and `FormulaInstaller#compute_dependencies` (used by `install_dependencies`), working reliably on both self-hosted runners and standard client Macs running unpatched Homebrew.
+1. **Dependency Deduplication (`merge_repeats`)**:
+   - **Grouping by Short Name**: Replaces exact full-name grouping with `Utils.name_from_full_name(d.name)` (e.g. `jaewoook/nal/icu4c@78` and `icu4c@78` group to `icu4c@78`).
+   - **Tap Priority**: If a group contains a tap-qualified dependency (`jaewoook/nal/*`), it is selected over the unqualified core dependency, ensuring prebuilt bottles are poured.
+   - **Global Compatibility**: Feeds both `formula.recursive_dependencies` (used by `FormulaInstaller#lock`) and `FormulaInstaller#compute_dependencies` (used by `install_dependencies`), eliminating `OperationInProgressError` lock collisions.
+
+2. **Zero-Uninstall Cross-Tap Migration (`FormulaInstaller#install_dependency`)**:
+   - **The Upstream Guard**: Homebrew's `formula_installer.rb` checks `dep_formula.tap.to_s != tab_tap.to_s` on existing keg receipts (`INSTALL_RECEIPT.json`) and aborts with `Error: <dep> is already installed from homebrew/core! Please brew uninstall <dep> first.` whenever an upgraded dependency changes tap origin.
+   - **In-Memory Tab Remapping**: Before the upstream check runs, the hook inspects existing kegs for the formula in `/usr/local/Cellar` and `/usr/local/var/homebrew/linked`. If the installed receipt originated from `homebrew/core`, its in-memory receipt is remapped to `jaewoook/nal`.
+   - **Seamless Bottle Pour**: Homebrew safely bypasses the abort, unlinks the old core keg, pours the tap's prebuilt x86_64 bottle, and records the new tap origin into the receipt without requiring manual `brew uninstall` commands from the end-user.
+   - **Idempotency**: Guarded by `const_defined?(:NAL_TAP_DEDUP)` so multiple formula loads in the same Ruby process evaluate safely without overhead or redefinition warnings.
 
 ---
 

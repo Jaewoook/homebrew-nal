@@ -8,6 +8,33 @@ unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
       end
     end
   end)
+
+  begin
+    require "formula_installer"
+    FormulaInstaller.prepend(Module.new do
+      def install_dependency(dep, dep_formula = dep.to_formula)
+        if dep_formula.tap&.to_s&.start_with?("jaewoook/nal")
+          keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
+          keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
+          keg_paths.uniq.each do |keg_path|
+            next unless keg_path&.directory?
+
+            target = keg_path.symlink? ? Utils::Path.resolved_path(keg_path) : keg_path
+            begin
+              keg = Keg.new(target)
+              if keg.tab&.source.is_a?(Hash) && keg.tab.source["tap"] == "homebrew/core"
+                keg.tab.source["tap"] = dep_formula.tap.to_s
+                keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
+              end
+            rescue StandardError
+            end
+          end
+        end
+        super
+      end
+    end)
+  rescue LoadError
+  end
 end
 
 class Gnupg < Formula
