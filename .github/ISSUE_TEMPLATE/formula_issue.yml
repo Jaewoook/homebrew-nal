@@ -1,0 +1,63 @@
+name: Formula / Upstream Sync Issue
+description: Report an issue with formula parsing, bottle downloads, or upstream Homebrew sync
+title: "[Formula]: "
+labels: ["formula", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report issues regarding formula display, version parity with Homebrew core, bottle downloads, or build dispatches.
+
+  - type: input
+    id: formula-name
+    attributes:
+      label: Formula Name(s)
+      description: Which formula(s) are affected?
+      placeholder: e.g. ffmpeg, node, rust
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-category
+    attributes:
+      label: Issue Category
+      options:
+        - Outdated bottle / Upstream version mismatch
+        - Missing bottle for architecture
+        - Broken bottle asset download link
+        - Ruby Formula parsing error
+        - Build dispatch failed / stuck
+        - Other formula issue
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Target Architecture / Platform
+      options:
+        - label: macOS Apple Silicon (ARM64 - sequoia, sonoma)
+        - label: macOS Intel (x86_64)
+        - label: Linux (x86_64)
+        - label: Linux (ARM64)
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Issue Description & Expected vs Actual Version
+      description: Provide details on current vs expected formula version, bottle URL, or parse error.
+      placeholder: |
+        - Current tap version shown:
+        - Upstream Core version:
+        - Error message or behavior:
+    validations:
+      required: true
+
+  - type: textarea
+    id: brew-output
+    attributes:
+      label: `brew` Terminal Output / Error Logs
+      description: Paste relevant output from `brew install`, `brew info`, or web console logs.
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,81 @@
+name: New Formula Request
+description: Request a new formula or tool to be packaged and distributed in the homebrew-nal tap
+title: "[Formula Request]: "
+labels: ["formula-request", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        External users cannot trigger build dispatches directly from the web dashboard. 
+        Use this template to request a new tool or formula to be added to the **homebrew-nal** tap. 
+        Please ensure the project is open-source and actively maintained.
+
+  - type: input
+    id: formula-name
+    attributes:
+      label: Formula Name
+      description: What is the name of the tool or package?
+      placeholder: e.g. bat, ripgrep, neovim
+    validations:
+      required: true
+
+  - type: input
+    id: project-url
+    attributes:
+      label: Project Homepage / Repository URL
+      description: Link to the upstream official website or source code repository.
+      placeholder: https://github.com/owner/repo
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description & Use Case
+      description: Brief description of the tool and why it would be valuable in this tap.
+      placeholder: A fast, lightweight CLI tool for...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: upstream-status
+    attributes:
+      label: Upstream Homebrew Core Status
+      description: Is this formula already present in official Homebrew Core?
+      options:
+        - "No - Brand new formula not currently in Homebrew Core"
+        - "Yes - Available in Core, but requesting pre-built bottles for specific architectures"
+        - "Yes - Available in Core, but requesting custom build flags or patches"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: target-platforms
+    attributes:
+      label: Desired Platform Bottles
+      description: Which platforms do you need pre-built bottles for?
+      options:
+        - label: macOS Apple Silicon (ARM64 - sequoia / sonoma)
+        - label: macOS Intel (x86_64)
+        - label: Linux (x86_64)
+        - label: Linux (ARM64 / aarch64)
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Known Dependencies & Build Requirements
+      description: List any known compilers, build tools, or runtime libraries needed (if known).
+      placeholder: e.g. rust / cargo, cmake, openssl@3, pkg-config
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the tap catalog to ensure this formula does not already exist in `homebrew-nal`.
+          required: true
+        - label: The software has an open-source license and is actively maintained.
+          required: true
