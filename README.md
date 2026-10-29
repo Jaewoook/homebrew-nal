@@ -1,5 +1,9 @@
 # homebrew-nal
 
+<p align="center">
+  <img src=".github/assets/hero-banner.jpg" alt="homebrew-nal — Prebuilt Homebrew Bottles for macOS Intel (x86_64)" width="100%">
+</p>
+
 A custom [Homebrew](https://brew.sh/) tap providing automated upstream syncing and prebuilt binary bottles for **macOS Intel (`x86_64`)**.
 
 🌐 **Package Registry**: [https://homebrew-nal.jaewook.dev](https://homebrew-nal.jaewook.dev)
@@ -26,6 +30,10 @@ According to the official [Homebrew Support Tiers](https://docs.brew.sh/Support-
 - **Discontinued Intel Bottles**: In alignment with Apple phasing out Intel hardware, Homebrew has stopped publishing new binary bottles for Intel Macs, forcing formulae to compile from source.
 
 Without prebuilt bottles, running `brew install` for massive developer packages (LLVM, GCC, Node, Rust) compiles entirely from source. This process takes hours, consumes tens of gigabytes of disk space, and frequently fails due to missing build dependencies in Superenv.
+
+<p align="center">
+  <img src=".github/assets/comparison.jpg" alt="Homebrew on Intel Macs (x86_64): Without homebrew-nal vs With homebrew-nal" width="100%">
+</p>
 
 **`homebrew-nal`** solves this by maintaining a dedicated self-hosted macOS Intel builder that continuously mirrors upstream `homebrew-core`, packages prebuilt binary bottles, and pours them instantly on your Mac with **zero source compilation**.
 
