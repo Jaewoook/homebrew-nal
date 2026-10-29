@@ -57,6 +57,10 @@ GitHub Actions blocks git pushes made by the default `GITHUB_TOKEN` from trigger
 
 ## 3. Self-Hosted Runner Administration
 
+### Security & Account Isolation
+- **Dedicated Standard User**: Run the GitHub Actions runner under a dedicated, non-administrator macOS user account (without passwordless `sudo` privileges) that owns `/usr/local`.
+- **No Untrusted PR Triggers**: Never add `pull_request` or `pull_request_target` triggers to workflows targeting `self-hosted` runners (`build.yml`), as external pull requests would otherwise execute arbitrary code on the build host.
+
 ### Runner Service & Daemon Management
 To keep the runner daemon running reliably as a launchd service:
 ```bash
@@ -76,7 +80,7 @@ sudo pmset -a disablesleep 1
 # Optional: verify power management settings
 pmset -g
 ```
-In **System Settings → Users & Groups**, ensure **Automatic Login** is enabled for the runner account so the runner daemon initializes automatically after system restarts.
+If the machine is physically secured and headless, you may optionally configure **Automatic Login** for the dedicated runner account in **System Settings → Users & Groups** so the user session and launchd agent initialize after system restarts.
 
 ---
 
@@ -95,7 +99,7 @@ When the self-hosted runner pushes bottle blocks back to the repository, it uses
 
 ### Setting Up a Verified GPG Key (Optional)
 If you wish to show the **Verified** badge on GitHub for bottle commits:
-1. Generate a GPG key for your bot on the runner host:
+1. Generate a GPG key for your bot on the runner host (with a 1-year expiration for periodic rotation):
    ```bash
    gpg --batch --generate-key <<EOF
    Key-Type: EDDSA
@@ -103,7 +107,7 @@ If you wish to show the **Verified** badge on GitHub for bottle commits:
    Key-Usage: sign
    Name-Real: NAL Bot
    Name-Email: nal-git-system@jaewook.me
-   Expire-Date: 0
+   Expire-Date: 1y
    %no-protection
    %commit
    EOF
