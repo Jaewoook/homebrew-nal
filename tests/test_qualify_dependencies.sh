@@ -96,6 +96,10 @@ if ! echo "$FOO_CONTENT" | grep -Fq 'NAL_TAP_DEDUP'; then
   echo "Assertion failed: NAL_TAP_DEDUP header was not injected into foo.rb"
   exit 1
 fi
+if ! echo "$FOO_CONTENT" | grep -Fq 'if dep_formula.tap&.to_s == "jaewoook/nal"'; then
+  echo "Assertion failed: exact tap match check was not injected into foo.rb"
+  exit 1
+fi
 if echo "$BAR_CONTENT" | grep -Fq 'NAL_TAP_DEDUP'; then
   echo "Assertion failed: NAL_TAP_DEDUP header should not be in bar.rb"
   exit 1
