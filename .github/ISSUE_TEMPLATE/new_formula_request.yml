@@ -44,22 +44,11 @@ body:
       description: Is this formula already present in official Homebrew Core?
       options:
         - "No - Brand new formula not currently in Homebrew Core"
-        - "Yes - Available in Core, but requesting pre-built bottles for specific architectures"
+        - "Yes - Available in Core, but requesting pre-built bottles for macOS Intel (x86_64)"
         - "Yes - Available in Core, but requesting custom build flags or patches"
         - "Unsure"
     validations:
       required: true
-
-  - type: checkboxes
-    id: target-platforms
-    attributes:
-      label: Desired Platform Bottles
-      description: Which platforms do you need pre-built bottles for?
-      options:
-        - label: macOS Apple Silicon (ARM64 - sequoia / sonoma)
-        - label: macOS Intel (x86_64)
-        - label: Linux (x86_64)
-        - label: Linux (ARM64 / aarch64)
 
   - type: textarea
     id: dependencies

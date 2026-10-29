@@ -176,7 +176,7 @@ git_commit() {
   fi
 
   if [[ ${#files_to_stage[@]} -gt 0 ]]; then
-    git add "${files_to_stage[@]}"
+    git add -- "${files_to_stage[@]}"
   fi
 
   if git diff --staged --quiet; then
@@ -239,6 +239,10 @@ UPDATED_LIST=()
 for FORMULA in $FORMULAS; do
   PRESERVED_CANDIDATE_PATH=""
   echo ""
+  if [[ ! "$FORMULA" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+    echo "  [ERROR] Invalid formula name '$FORMULA', skipping!" >&2
+    continue
+  fi
   echo "Checking formula: $FORMULA"
   LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
 
@@ -362,6 +366,9 @@ for FORMULA in $FORMULAS; do
     fi
 
     for CANDIDATE in "${PREV_CANDIDATES[@]}"; do
+      if [[ ! "$CANDIDATE" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+        continue
+      fi
       CANDIDATE_PATH="$FORMULA_DIR/${CANDIDATE}.rb"
       if [[ -f "$CANDIDATE_PATH" ]]; then
         continue
@@ -428,9 +435,14 @@ for FORMULA in $FORMULAS; do
   fi
 
   # Fetch any patches referenced by the formula in Patches/
-  PATCH_FILES=$(grep -oE 'Patches/[^"'\'' ]+' "$LOCAL_PATH" 2>/dev/null || true)
+  PATCH_FILES=$(grep -oE 'Patches/[a-zA-Z0-9._+-]+/[a-zA-Z0-9._/-]+' "$LOCAL_PATH" 2>/dev/null || true)
   if [[ -n "$PATCH_FILES" ]]; then
+    mkdir -p "Patches"
     for PATCH_REL in $PATCH_FILES; do
+      if [[ "$PATCH_REL" == *".."* ]] || ! python3 -c 'import os, sys; p = os.path.realpath(sys.argv[1]); b = os.path.realpath("Patches"); sys.exit(0 if p.startswith(b + os.sep) else 1)' "$PATCH_REL"; then
+        echo "  [ERROR] Refusing suspicious patch path: $PATCH_REL" >&2
+        continue
+      fi
       PATCH_URL="${UPSTREAM_RAW_BASE}/${PATCH_REL}"
       echo "  [PATCH] Downloading referenced patch: $PATCH_REL"
       mkdir -p "$(dirname "$PATCH_REL")"

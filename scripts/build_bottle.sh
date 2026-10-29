@@ -21,19 +21,29 @@ export NONINTERACTIVE="1"
 
 FORMULA_NAME="${1:?Formula name argument required}"
 
+if [[ ! "$FORMULA_NAME" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+  echo "::error::Invalid formula name: $FORMULA_NAME" >&2
+  exit 1
+fi
+
 echo "=========================================="
 echo "Building bottle for $FORMULA_NAME..."
 echo "=========================================="
 
 # Clean any lingering bottle archives from workspace
-rm -f *.bottle.tar.gz *.bottle.json *.tar.gz
+rm -f -- *.bottle.tar.gz *.bottle.json *.tar.gz
 
 # Ensure tap and formula are trusted by Homebrew to avoid UntrustedTapError
 /usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
 /usr/local/bin/brew trust --formula "jaewoook/nal/${FORMULA_NAME}" 2>/dev/null || true
 
 # Determine formula version for release tag and title
-FORMULA_VERSION=$(/usr/local/bin/brew ruby -e 'puts Formula["jaewoook/nal/'"${FORMULA_NAME}"'"].pkg_version')
+FORMULA_VERSION=$(/usr/local/bin/brew ruby -e 'puts Formula["jaewoook/nal/#{ARGV[0]}"].pkg_version' -- "$FORMULA_NAME")
+if [[ ! "$FORMULA_VERSION" =~ ^[a-zA-Z0-9._+-]+$ ]]; then
+  echo "::error::Invalid formula version resolved for $FORMULA_NAME: $FORMULA_VERSION" >&2
+  exit 1
+fi
+
 RELEASE_TAG="${FORMULA_NAME}.${FORMULA_VERSION}"
 RELEASE_TITLE="${FORMULA_NAME} ${FORMULA_VERSION}"
 
@@ -46,9 +56,11 @@ echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
 # Check if target version is already built in the Cellar
 NEEDS_INSTALL=1
 if /usr/local/bin/brew ruby -e '
-  f = Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]
+  formula_name = ARGV[0]
+  target_version = ARGV[1]
+  f = Formula["jaewoook/nal/#{formula_name}"]
   tab = Tab.for_formula(f) rescue nil
-  if f.installed_kegs.any? { |k| k.version.to_s == "'"${FORMULA_VERSION}"'" }
+  if f.installed_kegs.any? { |k| k.version.to_s == target_version }
     if tab && tab.source&.[]("tap") != "jaewoook/nal"
       tab.tap = Tap.fetch("jaewoook/nal") rescue nil
       tab.source["tap"] = "jaewoook/nal" if tab.source
@@ -57,7 +69,7 @@ if /usr/local/bin/brew ruby -e '
     exit 0
   end
   exit 1
-' 2>/dev/null; then
+' -- "$FORMULA_NAME" "$FORMULA_VERSION" 2>/dev/null; then
   echo "$FORMULA_NAME $FORMULA_VERSION is already built in the Cellar. Reusing existing build..."
   NEEDS_INSTALL=0
 else
@@ -81,12 +93,14 @@ if [ "$NEEDS_INSTALL" -eq 1 ]; then
 fi
 
 # Mark installed receipt as built_as_bottle so brew bottle accepts it
-/usr/local/bin/brew ruby -e 'tab = Tab.for_formula(Formula["jaewoook/nal/'"${FORMULA_NAME}"'"]); tab.built_as_bottle = true; tab.write'
+/usr/local/bin/brew ruby -e 'tab = Tab.for_formula(Formula["jaewoook/nal/#{ARGV[0]}"]); tab.built_as_bottle = true; tab.write' -- "$FORMULA_NAME"
 
 /usr/local/bin/brew bottle --root-url="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_TAG}" --json "jaewoook/nal/$FORMULA_NAME"
 
 # Locate and merge bottle JSON metadata into formula
-BOTTLE_JSON=$(ls ${FORMULA_NAME}--*.bottle.json 2>/dev/null | head -n 1 || true)
+shopt -s nullglob
+BOTTLE_JSON_FILES=("${FORMULA_NAME}"--*.bottle.json)
+BOTTLE_JSON="${BOTTLE_JSON_FILES[0]:-}"
 if [ -n "$BOTTLE_JSON" ] && [ -f "$BOTTLE_JSON" ]; then
   echo "Merging bottle information from $BOTTLE_JSON into Formula/${FORMULA_NAME}.rb..."
   /usr/local/bin/brew bottle --merge --write --no-commit "$BOTTLE_JSON"
@@ -96,9 +110,9 @@ else
 fi
 
 # Normalize bottle archive filename: rename double-hyphen to single-hyphen
-for f in ${FORMULA_NAME}--*.tar.gz; do
+for f in "${FORMULA_NAME}"--*.tar.gz; do
   [ -f "$f" ] || continue
   TARGET_NAME="${f/--/-}"
   echo "Renaming bottle archive $f -> $TARGET_NAME"
-  mv "$f" "$TARGET_NAME"
+  mv -- "$f" "$TARGET_NAME"
 done

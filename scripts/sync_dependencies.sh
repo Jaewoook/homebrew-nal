@@ -143,6 +143,11 @@ register_dependency() {
     return 0
   fi
 
+  if [[ ! "$dep" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+    echo "  [WARN] Invalid dependency name '$dep', skipping!" >&2
+    return 0
+  fi
+
   local target_path="${FORMULA_DIR}/${dep}.rb"
   local is_new=0
 
@@ -194,6 +199,10 @@ register_dependency() {
 echo "Resolving dependencies for: ${TARGETS[*]}"
 
 for target in "${TARGETS[@]}"; do
+  if [[ ! "$target" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+    echo "Invalid formula name '$target'. Skipping dependency resolution." >&2
+    continue
+  fi
   target_rb="${FORMULA_DIR}/${target}.rb"
   if [ ! -f "$target_rb" ]; then
     echo "Formula $target_rb not found locally. Skipping dependency resolution for $target."

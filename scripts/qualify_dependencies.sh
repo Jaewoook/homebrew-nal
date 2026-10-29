@@ -78,7 +78,7 @@ dedup_header = f"""unless Dependency.singleton_class.const_defined?(:NAL_TAP_DED
     require "formula_installer"
     FormulaInstaller.prepend(Module.new do
       def install_dependency(dep, dep_formula = dep.to_formula)
-        if dep_formula.tap&.to_s&.start_with?("{tap_name}")
+        if dep_formula.tap&.to_s == "{tap_name}"
           keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
           keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
           keg_paths.uniq.each do |keg_path|
@@ -91,7 +91,7 @@ dedup_header = f"""unless Dependency.singleton_class.const_defined?(:NAL_TAP_DED
                 keg.tab.source["tap"] = dep_formula.tap.to_s
                 keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
               end
-            rescue StandardError
+            rescue RuntimeError, SystemCallError, TypeError
             end
           end
         end

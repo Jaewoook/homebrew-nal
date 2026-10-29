@@ -5,7 +5,7 @@ set -euo pipefail
 FORMULA_INPUT="${FORMULA_INPUT:-}"
 EVENT_NAME="${EVENT_NAME:-}"
 EVENT_BEFORE="${EVENT_BEFORE:-}"
-GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-}"
 
 TARGETS=()
 
@@ -18,10 +18,10 @@ if [ -n "$FORMULA_INPUT" ]; then
   else
     CLEANED=$(echo "$FORMULA_INPUT" | tr ',' ' ')
     for name in $CLEANED; do
-      if [ -f "Formula/${name}.rb" ]; then
+      if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]] && [ -f "Formula/${name}.rb" ]; then
         TARGETS+=("$name")
       else
-        echo "::warning::Formula Formula/${name}.rb not found, skipping."
+        echo "::warning::Formula Formula/${name}.rb not found or invalid, skipping."
       fi
     done
   fi
@@ -34,7 +34,7 @@ elif [ "$EVENT_NAME" = "push" ]; then
   CHANGED=$(echo "$RAW_DIFF" | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
 
   for name in $CHANGED; do
-    if [ -f "Formula/${name}.rb" ]; then
+    if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]] && [ -f "Formula/${name}.rb" ]; then
       if grep -Fq 'root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/' "Formula/${name}.rb"; then
         if ! echo "$RAW_DIFF" | grep -Eq "^Patches/${name}/"; then
           echo "Skipping ${name}: bottle block already present for homebrew-nal."
@@ -94,5 +94,10 @@ EOF
 fi
 
 echo "Formulas to build: $JSON_ARRAY (count: $COUNT)"
-echo "formulas=$JSON_ARRAY" >> "$GITHUB_OUTPUT"
-echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+if [ -n "$GITHUB_OUTPUT" ]; then
+  echo "formulas=$JSON_ARRAY" >> "$GITHUB_OUTPUT"
+  echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+else
+  echo "formulas=$JSON_ARRAY"
+  echo "count=$COUNT"
+fi

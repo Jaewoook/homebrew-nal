@@ -1,6 +1,6 @@
 # homebrew-nal
 
-A custom [Homebrew](https://brew.sh/) tap providing automated upstream syncing and prebuilt binary bottles for macOS Intel (`x86_64`) on macOS Sequoia (15).
+A custom [Homebrew](https://brew.sh/) tap providing automated upstream syncing and prebuilt binary bottles for **macOS Intel (`x86_64`)**.
 
 🌐 **Package Registry**: [https://homebrew-nal.jaewook.dev](https://homebrew-nal.jaewook.dev)
 

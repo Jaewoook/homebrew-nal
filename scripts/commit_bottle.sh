@@ -2,7 +2,12 @@
 set -euo pipefail
 
 FORMULA_NAME="${1:?Formula name argument required}"
-GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-}"
+
+if [[ ! "$FORMULA_NAME" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+  echo "::error::Invalid formula name: $FORMULA_NAME" >&2
+  exit 1
+fi
 
 BOT_NAME="${BOT_NAME:-NAL Bot}"
 BOT_EMAIL="${BOT_EMAIL:-nal-git-system@jaewook.me}"
@@ -44,7 +49,7 @@ else
   )
 fi
 
-git add "Formula/${FORMULA_NAME}.rb"
+git add -- "Formula/${FORMULA_NAME}.rb"
 if ! git diff --staged --quiet; then
   git "${GIT_SIGN_ARGS[@]}" commit -m "Add bottle block for ${FORMULA_NAME} [skip ci]"
   # Pull and rebase cleanly now that working tree is clean
@@ -55,4 +60,8 @@ else
 fi
 
 COMMIT_SHA=$(git rev-parse HEAD)
-echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+if [ -n "$GITHUB_OUTPUT" ]; then
+  echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+else
+  echo "commit_sha=$COMMIT_SHA"
+fi

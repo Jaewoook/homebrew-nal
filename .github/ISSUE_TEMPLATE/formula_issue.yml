@@ -34,12 +34,11 @@ body:
   - type: checkboxes
     id: platforms
     attributes:
-      label: Target Architecture / Platform
+      label: Target macOS Environment (Intel x86_64)
       options:
-        - label: macOS Apple Silicon (ARM64 - sequoia, sonoma)
-        - label: macOS Intel (x86_64)
-        - label: Linux (x86_64)
-        - label: Linux (ARM64)
+        - label: macOS Tahoe (Intel x86_64)
+        - label: macOS Sequoia (Intel x86_64)
+        - label: Other macOS / Architecture
 
   - type: textarea
     id: details
