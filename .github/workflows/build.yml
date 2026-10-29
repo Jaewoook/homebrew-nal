@@ -15,7 +15,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: bottle-build
@@ -47,6 +47,8 @@ jobs:
     needs: detect
     if: needs.detect.outputs.count != '0' && needs.detect.outputs.count != ''
     runs-on: self-hosted
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -59,6 +61,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          clean: true
 
       - name: Register repository as a Homebrew tap
         run: |
@@ -69,17 +72,20 @@ jobs:
 
       - name: Build package and create bottle
         env:
+          FORMULA_NAME: ${{ matrix.formula }}
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_AUTOREMOVE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
           HOMEBREW_NO_ASK: '1'
           NONINTERACTIVE: '1'
-        run: bash scripts/build_bottle.sh "${{ matrix.formula }}"
+        run: bash scripts/build_bottle.sh "$FORMULA_NAME"
 
       - name: Commit updated formula bottle block
         id: commit
-        run: bash scripts/commit_bottle.sh "${{ matrix.formula }}"
+        env:
+          FORMULA_NAME: ${{ matrix.formula }}
+        run: bash scripts/commit_bottle.sh "$FORMULA_NAME"
 
       - name: Upload Bottle file to GitHub Releases
         uses: softprops/action-gh-release@v3
@@ -94,7 +100,9 @@ jobs:
       - name: Clean up build artifacts and caches
         if: always()
         run: |
-          rm -f *.tar.gz *.json
+          rm -f -- *.tar.gz *.json
+          git checkout -- . 2>/dev/null || true
+          git clean -fd 2>/dev/null || true
           /usr/local/bin/brew cleanup --prune=all -s
           git config --local --unset-all user.name 2>/dev/null || true
           git config --local --unset-all user.email 2>/dev/null || true

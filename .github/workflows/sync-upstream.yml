@@ -31,8 +31,10 @@ jobs:
 
     steps:
       - name: Validate Personal Access Token (PAT)
+        env:
+          SYNC_PAT: ${{ secrets.SYNC_PAT }}
         run: |
-          if [ -z "${{ secrets.SYNC_PAT }}" ]; then
+          if [ -z "$SYNC_PAT" ]; then
             echo "::error::Secret SYNC_PAT is not set! A Personal Access Token (PAT) is required so git pushes can trigger downstream workflows (like build.yml). Please see setup instructions."
             exit 1
           fi
@@ -60,8 +62,8 @@ jobs:
           GIT_BRANCH: 'main'
         run: |
           chmod +x scripts/*.sh
-          EXTRA_ARGS=""
+          EXTRA_ARGS=(--commit --push)
           if [ "${WITH_DEPS}" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --with-deps"
+            EXTRA_ARGS+=(--with-deps)
           fi
-          ./scripts/sync_formulas.sh --commit --push $EXTRA_ARGS
+          ./scripts/sync_formulas.sh "${EXTRA_ARGS[@]}"
