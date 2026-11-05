@@ -26,6 +26,12 @@ if [[ ! "$FORMULA_NAME" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "${GITHUB_ACTIONS:-}" ] && [ "${SKIP_HOST_RESTORE:-false}" != "true" ] && [ -f "${SCRIPT_DIR}/restore_host_state.sh" ]; then
+  bash "${SCRIPT_DIR}/restore_host_state.sh" record-state formula "$FORMULA_NAME"
+  trap 'bash "${SCRIPT_DIR}/restore_host_state.sh" restore formula "$FORMULA_NAME"' EXIT
+fi
+
 echo "=========================================="
 echo "Building bottle for $FORMULA_NAME..."
 echo "=========================================="
@@ -52,6 +58,16 @@ if [ -n "${GITHUB_ENV:-}" ]; then
   echo "RELEASE_TITLE=${RELEASE_TITLE}" >> "$GITHUB_ENV"
 fi
 echo "Prepared release target: $RELEASE_TITLE (tag: $RELEASE_TAG)"
+
+# Attempt Fast-Path Binary Mirroring (GHCR x86_64/all bottle or standalone GitHub Release x86_64 binary)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${FORCE_SOURCE_BUILD:-false}" != "true" ] && [ -f "${SCRIPT_DIR}/try_mirror_formula_binary.sh" ]; then
+  if bash "${SCRIPT_DIR}/try_mirror_formula_binary.sh" "$FORMULA_NAME" "$FORMULA_VERSION"; then
+    echo "Fast-path binary mirror succeeded for $FORMULA_NAME ($FORMULA_VERSION)!"
+    exit 0
+  fi
+  echo "Fast-path binary mirror not applicable for $FORMULA_NAME; falling back to source build..."
+fi
 
 # Check if target version is already built in the Cellar
 NEEDS_INSTALL=1

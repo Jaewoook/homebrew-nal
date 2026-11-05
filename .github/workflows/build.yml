@@ -5,11 +5,17 @@ on:
     branches: [ main ]
     paths:
       - 'Formula/**'
+      - 'Casks/**'
       - 'Patches/**'
   workflow_dispatch:
     inputs:
       formula:
         description: 'Specific formula to build (e.g. "xz", "node", "node@22", or "all"). Multiple formulas can be separated by comma or space.'
+        required: false
+        default: ''
+        type: string
+      casks:
+        description: 'Specific cask to mirror (e.g. "ghostty" or "all"). Multiple casks can be separated by comma or space.'
         required: false
         default: ''
         type: string
@@ -23,10 +29,13 @@ concurrency:
 
 jobs:
   detect:
-    name: Detect Formulas to Build
+    name: Detect Formulas and Casks
     runs-on: ubuntu-latest
     outputs:
       formulas: ${{ steps.detect.outputs.formulas }}
+      formula_count: ${{ steps.detect.outputs.formula_count }}
+      casks: ${{ steps.detect.outputs.casks }}
+      cask_count: ${{ steps.detect.outputs.cask_count }}
       count: ${{ steps.detect.outputs.count }}
     steps:
       - name: Checkout repository
@@ -34,10 +43,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine target formulas
+      - name: Determine target formulas and casks
         id: detect
         env:
           FORMULA_INPUT: ${{ github.event.inputs.formula }}
+          CASK_INPUT: ${{ github.event.inputs.casks }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_BEFORE: ${{ github.event.before }}
         run: bash scripts/detect_formulas.sh
@@ -45,7 +55,7 @@ jobs:
   build:
     name: Build Bottle (${{ matrix.formula }})
     needs: detect
-    if: needs.detect.outputs.count != '0' && needs.detect.outputs.count != ''
+    if: needs.detect.outputs.formula_count != '0' && needs.detect.outputs.formula_count != ''
     runs-on: self-hosted
     permissions:
       contents: write
@@ -69,6 +79,11 @@ jobs:
           mkdir -p "$(dirname "$TAP_DIR")"
           ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
           /usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
+
+      - name: Record host state before formula build
+        env:
+          FORMULA_NAME: ${{ matrix.formula }}
+        run: bash scripts/restore_host_state.sh record-state formula "$FORMULA_NAME"
 
       - name: Build package and create bottle
         env:
@@ -97,13 +112,79 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clean up build artifacts and caches
+      - name: Clean up build artifacts and restore host state
         if: always()
+        env:
+          FORMULA_NAME: ${{ matrix.formula }}
         run: |
+          bash scripts/restore_host_state.sh restore formula "$FORMULA_NAME"
           rm -f -- *.tar.gz *.json
           git checkout -- . 2>/dev/null || true
           git clean -fd 2>/dev/null || true
           /usr/local/bin/brew cleanup --prune=all -s
+          git config --local --unset-all user.name 2>/dev/null || true
+          git config --local --unset-all user.email 2>/dev/null || true
+          git config --local --unset-all user.signingkey 2>/dev/null || true
+          git config --local --unset-all commit.gpgsign 2>/dev/null || true
+
+  mirror-cask:
+    name: Mirror Cask (${{ matrix.cask }})
+    needs: detect
+    if: needs.detect.outputs.cask_count != '0' && needs.detect.outputs.cask_count != ''
+    runs-on: self-hosted
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        cask: ${{ fromJson(needs.detect.outputs.casks) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          clean: true
+
+      - name: Record host state before Cask mirror
+        env:
+          CASK_NAME: ${{ matrix.cask }}
+        run: bash scripts/restore_host_state.sh record-state cask "$CASK_NAME"
+
+      - name: Mirror Cask binary and rewrite Cask URL
+        id: mirror
+        env:
+          CASK_NAME: ${{ matrix.cask }}
+        run: bash scripts/mirror_cask.sh "$CASK_NAME"
+
+      - name: Commit updated Cask definition
+        id: commit
+        env:
+          CASK_NAME: ${{ matrix.cask }}
+          CASK_VERSION: ${{ steps.mirror.outputs.version }}
+        run: bash scripts/commit_cask.sh "$CASK_NAME" "$CASK_VERSION"
+
+      - name: Upload Cask binary to GitHub Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          files: "${{ steps.mirror.outputs.cask_file }}"
+          tag_name: "${{ steps.mirror.outputs.release_tag }}"
+          name: "${{ steps.mirror.outputs.release_title }}"
+          target_commitish: "${{ steps.commit.outputs.commit_sha }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up Cask artifacts and restore host state
+        if: always()
+        env:
+          CASK_NAME: ${{ matrix.cask }}
+        run: |
+          bash scripts/restore_host_state.sh restore cask "$CASK_NAME"
+          rm -f -- "${{ steps.mirror.outputs.cask_file }}"
+          git checkout -- . 2>/dev/null || true
+          git clean -fd 2>/dev/null || true
           git config --local --unset-all user.name 2>/dev/null || true
           git config --local --unset-all user.email 2>/dev/null || true
           git config --local --unset-all user.signingkey 2>/dev/null || true

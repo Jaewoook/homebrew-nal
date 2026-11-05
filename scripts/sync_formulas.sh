@@ -6,13 +6,22 @@ set -euo pipefail
 
 UPSTREAM_RAW_BASE=${UPSTREAM_RAW_BASE:-"https://raw.githubusercontent.com/Homebrew/homebrew-core/master"}
 UPSTREAM_API_BASE=${UPSTREAM_API_BASE:-"https://formulae.brew.sh/api/formula"}
+UPSTREAM_CASK_RAW_BASE=${UPSTREAM_CASK_RAW_BASE:-"https://raw.githubusercontent.com/Homebrew/homebrew-cask/HEAD"}
+UPSTREAM_CASK_API_BASE=${UPSTREAM_CASK_API_BASE:-"https://formulae.brew.sh/api/cask"}
 STATE_FILE=".formula-versions.json"
+CASK_STATE_FILE=".cask-versions.json"
 FORMULA_DIR="Formula"
+CASK_DIR="Casks"
 
 # ------------------------------------------------------------------------------
 # Default Options & Environment Overrides
 # ------------------------------------------------------------------------------
-FORMULAS=${FORMULAS:-"llvm gcc"}
+EXPLICIT_FORMULAS="false"
+if [[ -n "${FORMULAS:-}" ]]; then
+  EXPLICIT_FORMULAS="true"
+fi
+FORMULAS=${FORMULAS:-""}
+CASKS=${CASKS:-""}
 FORCE_SYNC=${FORCE_SYNC:-"false"}
 DRY_RUN=${DRY_RUN:-"false"}
 AUTO_COMMIT=${AUTO_COMMIT:-"false"}
@@ -24,6 +33,8 @@ AUTO_PRESERVE=${AUTO_PRESERVE:-"true"}
 NO_GPG_SIGN=${NO_GPG_SIGN:-"false"}
 
 CLI_FORMULAS=()
+CLI_CASKS=()
+PARSE_MODE="formulas"
 
 # ------------------------------------------------------------------------------
 # Parse CLI Arguments
@@ -34,9 +45,11 @@ Usage: $(basename "$0") [options] [formula1 formula2 ...]
 
 Options:
   -f, --formulas LIST   Space- or comma-separated list of formula names (e.g. "node node@22")
+  --casks LIST          Space- or comma-separated list of cask names (e.g. "ghostty")
   --force               Force sync even if local and upstream versions match
   -d, --dry-run         Perform version check without saving or committing
-  -c, --commit          Commit updated formula(s) to git
+  -c, --commit          Commit updated formula(s)/cask(s) to git
+  --no-commit           Do not commit updated formula(s)/cask(s) to git
   -p, --push            Push commits to remote repository
   -b, --branch BRANCH   Target git branch (default: main)
   --no-gpg-sign         Disable GPG signing when committing to git
@@ -46,7 +59,7 @@ Options:
   -h, --help            Show this help message
 
 Environment Variables:
-  FORMULAS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH, NO_GPG_SIGN, AUTO_PRESERVE
+  FORMULAS, CASKS, FORCE_SYNC, DRY_RUN, AUTO_COMMIT, AUTO_PUSH, GIT_BRANCH, NO_GPG_SIGN, AUTO_PRESERVE
 EOF
   exit 0
 }
@@ -54,8 +67,23 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -f|--formulas)
-      FORMULAS="$2"
-      shift 2
+      EXPLICIT_FORMULAS="true"
+      PARSE_MODE="formulas"
+      if [[ $# -gt 1 && "$2" != -* ]]; then
+        FORMULAS="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --casks)
+      PARSE_MODE="casks"
+      if [[ $# -gt 1 && "$2" != -* ]]; then
+        CASKS="$2"
+        shift 2
+      else
+        shift
+      fi
       ;;
     --force)
       FORCE_SYNC="true"
@@ -67,6 +95,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -c|--commit)
       AUTO_COMMIT="true"
+      shift
+      ;;
+    --no-commit)
+      AUTO_COMMIT="false"
       shift
       ;;
     -p|--push)
@@ -101,18 +133,45 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      CLI_FORMULAS+=("$1")
+      if [[ "$PARSE_MODE" == "casks" ]]; then
+        CLI_CASKS+=("$1")
+      else
+        EXPLICIT_FORMULAS="true"
+        CLI_FORMULAS+=("$1")
+      fi
       shift
       ;;
   esac
 done
 
 if [[ ${#CLI_FORMULAS[@]} -gt 0 ]]; then
-  FORMULAS="${CLI_FORMULAS[*]}"
+  if [[ -n "$FORMULAS" ]]; then
+    FORMULAS="${FORMULAS} ${CLI_FORMULAS[*]}"
+  else
+    FORMULAS="${CLI_FORMULAS[*]}"
+  fi
 fi
 
-# Normalize formulas list (replace commas with spaces)
+if [[ ${#CLI_CASKS[@]} -gt 0 ]]; then
+  if [[ -n "$CASKS" ]]; then
+    CASKS="${CASKS} ${CLI_CASKS[*]}"
+  else
+    CASKS="${CLI_CASKS[*]}"
+  fi
+fi
+
+# Normalize lists (replace commas with spaces)
 FORMULAS=$(echo "$FORMULAS" | tr ',' ' ')
+CASKS=$(echo "$CASKS" | tr ',' ' ')
+
+# If neither formulas nor casks were explicitly provided, default formulas to "llvm gcc"
+# and casks to any tracked keys in .cask-versions.json
+if [[ -z "${FORMULAS// /}" && -z "${CASKS// /}" ]]; then
+  FORMULAS="llvm gcc"
+  if [[ -f "$CASK_STATE_FILE" ]] && command -v jq >/dev/null 2>&1; then
+    CASKS=$(jq -r 'keys | join(" ")' "$CASK_STATE_FILE" 2>/dev/null || echo "")
+  fi
+fi
 
 # ------------------------------------------------------------------------------
 # Helper Functions
@@ -219,14 +278,20 @@ fi
 # ------------------------------------------------------------------------------
 # Main Sync Logic
 # ------------------------------------------------------------------------------
-mkdir -p "$FORMULA_DIR"
-if [[ ! -f "$STATE_FILE" ]]; then
-  echo "{}" > "$STATE_FILE"
+if [[ "$DRY_RUN" != "true" ]]; then
+  mkdir -p "$FORMULA_DIR" "$CASK_DIR"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    echo "{}" > "$STATE_FILE"
+  fi
+  if [[ ! -f "$CASK_STATE_FILE" ]]; then
+    echo "{}" > "$CASK_STATE_FILE"
+  fi
 fi
 
 echo "=================================================="
 echo "Homebrew Tap Upstream Sync (Shell)"
-echo "Formulas to check: $FORMULAS"
+echo "Formulas to check: ${FORMULAS:-none}"
+echo "Casks to check:    ${CASKS:-none}"
 echo "Force sync:        $FORCE_SYNC"
 echo "Dry run:           $DRY_RUN"
 echo "Auto commit:       $AUTO_COMMIT"
@@ -235,6 +300,7 @@ echo "Target branch:     $GIT_BRANCH"
 echo "=================================================="
 
 UPDATED_LIST=()
+UPDATED_CASKS_LIST=()
 
 for FORMULA in $FORMULAS; do
   PRESERVED_CANDIDATE_PATH=""
@@ -504,27 +570,145 @@ if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true
   fi
 fi
 
+# ------------------------------------------------------------------------------
+# Cask Sync Loop
+# ------------------------------------------------------------------------------
+for CASK in $CASKS; do
+  echo ""
+  if [[ ! "$CASK" =~ ^[a-zA-Z0-9._+-]+(@[a-zA-Z0-9._+-]+)?$ ]]; then
+    echo "  [ERROR] Invalid cask name '$CASK', skipping!" >&2
+    continue
+  fi
+  echo "Checking cask: $CASK"
+  LOCAL_CASK_PATH="$CASK_DIR/${CASK}.rb"
+
+  # 1. Fetch upstream cask metadata from Homebrew Cask API
+  CASK_API_URL="${UPSTREAM_CASK_API_BASE}/${CASK}.json"
+  CASK_META_JSON=$(curl -sSfL "$CASK_API_URL" 2>/dev/null || true)
+
+  UPSTREAM_CASK_VER=""
+  RUBY_SOURCE_PATH=""
+  if [[ -n "$CASK_META_JSON" ]]; then
+    UPSTREAM_CASK_VER=$(echo "$CASK_META_JSON" | jq -r '.version // empty')
+    RUBY_SOURCE_PATH=$(echo "$CASK_META_JSON" | jq -r '.ruby_source_path // empty')
+  fi
+
+  FIRST_CHAR=$(printf "%s" "${CASK:0:1}" | tr '[:upper:]' '[:lower:]')
+  if [[ -z "$RUBY_SOURCE_PATH" ]]; then
+    RUBY_SOURCE_PATH="Casks/${FIRST_CHAR}/${CASK}.rb"
+  fi
+
+  TMP_CASK_RB=$(mktemp)
+  CASK_SOURCE_URL="${UPSTREAM_CASK_RAW_BASE}/${RUBY_SOURCE_PATH}"
+  CASK_FALLBACK_URL="${UPSTREAM_CASK_RAW_BASE}/Casks/${FIRST_CHAR}/${CASK}.rb"
+  CASK_ROOT_URL="${UPSTREAM_CASK_RAW_BASE}/Casks/${CASK}.rb"
+
+  if curl -sSfL -o "$TMP_CASK_RB" "$CASK_SOURCE_URL" 2>/dev/null; then
+    :
+  elif curl -sSfL -o "$TMP_CASK_RB" "$CASK_FALLBACK_URL" 2>/dev/null; then
+    CASK_SOURCE_URL="$CASK_FALLBACK_URL"
+  elif curl -sSfL -o "$TMP_CASK_RB" "$CASK_ROOT_URL" 2>/dev/null; then
+    CASK_SOURCE_URL="$CASK_ROOT_URL"
+  else
+    echo "  [ERROR] Could not download cask for '$CASK' from upstream!" >&2
+    rm -f "$TMP_CASK_RB"
+    continue
+  fi
+
+  SANITIZED_CASK_TMP=$(mktemp)
+  grep -v -E '^[[:space:]]*no_autobump!' "$TMP_CASK_RB" > "$SANITIZED_CASK_TMP" || true
+  mv "$SANITIZED_CASK_TMP" "$TMP_CASK_RB"
+
+  if [[ -z "$UPSTREAM_CASK_VER" ]]; then
+    UPSTREAM_CASK_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$TMP_CASK_RB" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || true)
+  fi
+
+  UPSTREAM_CASK_SHA=$(calc_sha256 "$TMP_CASK_RB")
+
+  LOCAL_CASK_VER=""
+  LOCAL_CASK_SHA=""
+  if [[ -f "$LOCAL_CASK_PATH" ]]; then
+    LOCAL_CASK_SHA=$(calc_sha256 "$LOCAL_CASK_PATH")
+    LOCAL_CASK_VER=$(jq -r --arg n "$CASK" '.[$n].version // .[$n] // empty' "$CASK_STATE_FILE" 2>/dev/null || true)
+    if [[ -z "$LOCAL_CASK_VER" ]]; then
+      LOCAL_CASK_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$LOCAL_CASK_PATH" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || true)
+    fi
+  fi
+
+  echo "  Upstream Cask: version=${UPSTREAM_CASK_VER:-unknown} (from $CASK_SOURCE_URL)"
+  echo "  Local Cask:    version=${LOCAL_CASK_VER:-none}"
+
+  CASK_NEEDS_UPDATE=false
+  if [[ "$FORCE_SYNC" == "true" ]]; then
+    CASK_NEEDS_UPDATE=true
+  elif [[ ! -f "$LOCAL_CASK_PATH" ]]; then
+    CASK_NEEDS_UPDATE=true
+  elif is_upstream_newer "$UPSTREAM_CASK_VER" 0 "$LOCAL_CASK_VER" 0; then
+    CASK_NEEDS_UPDATE=true
+  fi
+
+  if [[ "$CASK_NEEDS_UPDATE" != "true" ]]; then
+    echo "  [SKIP] Local cask is already at latest version (${LOCAL_CASK_VER})."
+    rm -f "$TMP_CASK_RB"
+    continue
+  fi
+
+  echo "  [UPDATE] Syncing cask $CASK version ${UPSTREAM_CASK_VER} (local: ${LOCAL_CASK_VER:-none})"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "  [DRY RUN] Would write $LOCAL_CASK_PATH and commit."
+    UPDATED_CASKS_LIST+=("$CASK")
+    rm -f "$TMP_CASK_RB"
+    continue
+  fi
+
+  mv "$TMP_CASK_RB" "$LOCAL_CASK_PATH"
+
+  TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  TMP_CASK_STATE=$(mktemp)
+  jq --arg n "$CASK" \
+     --arg v "$UPSTREAM_CASK_VER" \
+     --arg s "$UPSTREAM_CASK_SHA" \
+     --arg t "$TIMESTAMP" \
+     '.[$n] = ((if (.[$n] | type) == "object" then .[$n] else {} end) + {version: $v, sha256: $s, last_updated: $t})' \
+     "$CASK_STATE_FILE" > "$TMP_CASK_STATE" && mv "$TMP_CASK_STATE" "$CASK_STATE_FILE"
+
+  UPDATED_CASKS_LIST+=("$CASK")
+
+  if [[ "$AUTO_COMMIT" == "true" ]]; then
+    git_commit "Update $CASK cask to $UPSTREAM_CASK_VER" "$LOCAL_CASK_PATH" "$CASK_STATE_FILE"
+  fi
+done
+
+TOTAL_UPDATED_COUNT=$(( ${#UPDATED_LIST[@]} + ${#UPDATED_CASKS_LIST[@]} ))
+
 # Push all accumulated commits once at the end
-if [[ "$AUTO_PUSH" == "true" && ${#UPDATED_LIST[@]} -gt 0 ]]; then
+if [[ "$AUTO_PUSH" == "true" && $TOTAL_UPDATED_COUNT -gt 0 ]]; then
   git_push_changes
 fi
 
 # Set GitHub Actions output if running in CI
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  if [[ ${#UPDATED_LIST[@]} -gt 0 ]]; then
+  if [[ $TOTAL_UPDATED_COUNT -gt 0 ]]; then
     echo "has_updates=true" >> "$GITHUB_OUTPUT"
-    echo "updated_formulas=${UPDATED_LIST[*]}" >> "$GITHUB_OUTPUT"
+    echo "updated=true" >> "$GITHUB_OUTPUT"
   else
     echo "has_updates=false" >> "$GITHUB_OUTPUT"
-    echo "updated_formulas=" >> "$GITHUB_OUTPUT"
+    echo "updated=false" >> "$GITHUB_OUTPUT"
   fi
+  echo "updated_formulas=${UPDATED_LIST[*]:-}" >> "$GITHUB_OUTPUT"
+  echo "formulas=${UPDATED_LIST[*]:-}" >> "$GITHUB_OUTPUT"
+  echo "updated_casks=${UPDATED_CASKS_LIST[*]:-}" >> "$GITHUB_OUTPUT"
+  echo "casks=${UPDATED_CASKS_LIST[*]:-}" >> "$GITHUB_OUTPUT"
+  echo "cask_count=${#UPDATED_CASKS_LIST[@]}" >> "$GITHUB_OUTPUT"
+  echo "count=${TOTAL_UPDATED_COUNT}" >> "$GITHUB_OUTPUT"
 fi
 
 echo ""
 echo "=================================================="
-if [[ ${#UPDATED_LIST[@]} -eq 0 ]]; then
-  echo "Sync complete: All formulas are already up-to-date."
+if [[ $TOTAL_UPDATED_COUNT -eq 0 ]]; then
+  echo "Sync complete: All formulas and casks are already up-to-date."
 else
-  echo "Sync complete: Updated ${#UPDATED_LIST[@]} formula(s): ${UPDATED_LIST[*]}"
+  echo "Sync complete: Updated ${#UPDATED_LIST[@]} formula(s) (${UPDATED_LIST[*]:-none}) and ${#UPDATED_CASKS_LIST[@]} cask(s) (${UPDATED_CASKS_LIST[*]:-none})"
 fi
 echo "=================================================="
