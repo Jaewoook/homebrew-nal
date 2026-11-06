@@ -112,9 +112,51 @@ if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/ca
   exit 1
 fi
 
-if grep -Eq '^[[:space:]]*intel:' "$WORK_DIR/Casks/multi_arch.rb"; then
-  echo "Assertion failed: dangling intel: line left in multi_arch.rb"
+if ! grep -q 'sha256 arm:   "0000000000000000000000000000000000000000000000000000000000000000"' "$WORK_DIR/Casks/multi_arch.rb"; then
+  echo "Assertion failed: multi_arch.rb ARM SHA256 was corrupted"
   cat "$WORK_DIR/Casks/multi_arch.rb"
+  exit 1
+fi
+
+if ! grep -q 'intel: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"' "$WORK_DIR/Casks/multi_arch.rb"; then
+  echo "Assertion failed: multi_arch.rb Intel SHA256 was not updated"
+  cat "$WORK_DIR/Casks/multi_arch.rb"
+  exit 1
+fi
+
+# 3b. Test multi-arch cask with sha256 inside on_arm and on_intel blocks (Docker style)
+cat <<'EOF' > "$WORK_DIR/Casks/docker_style.rb"
+cask "docker_style" do
+  version "4.35.0"
+
+  on_arm do
+    sha256 "1111111111111111111111111111111111111111111111111111111111111111"
+    url "https://example.com/docker-#{version}-arm64.dmg"
+  end
+  on_intel do
+    sha256 "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    url "https://example.com/docker-#{version}-amd64.dmg"
+  end
+
+  name "DockerStyle"
+  desc "Docker style cask test"
+  homepage "https://example.com/"
+end
+EOF
+
+PATH="$WORK_DIR/mock_bin:$PATH" SKIP_ARCH_BINARY_MOUNT=true GITHUB_OUTPUT="$OUT_FILE" bash "$MIRROR_CASK_SCRIPT" docker_style
+
+# Verify on_arm sha256 is intact
+if ! grep -q 'sha256 "1111111111111111111111111111111111111111111111111111111111111111"' "$WORK_DIR/Casks/docker_style.rb"; then
+  echo "Assertion failed: docker_style.rb on_arm sha256 was corrupted"
+  cat "$WORK_DIR/Casks/docker_style.rb"
+  exit 1
+fi
+
+# Verify on_intel url is rewritten
+if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/cask-docker_style.4.35.0/docker-4.35.0-amd64.dmg"' "$WORK_DIR/Casks/docker_style.rb"; then
+  echo "Assertion failed: docker_style.rb on_intel url was not rewritten"
+  cat "$WORK_DIR/Casks/docker_style.rb"
   exit 1
 fi
 

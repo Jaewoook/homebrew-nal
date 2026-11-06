@@ -7,6 +7,11 @@
 # ==============================================================================
 set -euo pipefail
 
+# Ensure execution under Rosetta 2 (x86_64) on Apple Silicon hosts
+if [ "$(uname -m)" = "arm64" ]; then
+  exec arch -x86_64 /bin/bash "$0" "$@"
+fi
+
 FORMULA_NAME="${1:?Formula name required}"
 DRY_RUN="false"
 PKG_VERSION_ARG=""
@@ -92,13 +97,27 @@ ROOT_URL="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_T
 API_URL="https://formulae.brew.sh/api/formula/${FORMULA_NAME}.json"
 API_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
 
+HOST_BOTTLE_TAG=$(/usr/local/bin/brew ruby -e 'puts Utils::Bottles.tag.to_s rescue ""' 2>/dev/null || echo "")
+if [[ -z "$HOST_BOTTLE_TAG" ]]; then
+  MACOS_VER=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo "")
+  case "$MACOS_VER" in
+    16) HOST_BOTTLE_TAG="tahoe" ;;
+    15) HOST_BOTTLE_TAG="sequoia" ;;
+    14) HOST_BOTTLE_TAG="sonoma" ;;
+    13) HOST_BOTTLE_TAG="ventura" ;;
+    12) HOST_BOTTLE_TAG="monterey" ;;
+    *) HOST_BOTTLE_TAG="sequoia" ;;
+  esac
+fi
+
 if [[ -n "$API_JSON" ]]; then
-  FAST_A_INFO=$(python3 - "$BASE_VERSION" "$REVISION" <<'PY' "$API_JSON"
+  FAST_A_INFO=$(python3 - "$BASE_VERSION" "$REVISION" "$HOST_BOTTLE_TAG" <<'PY' "$API_JSON"
 import json, sys
 
 base_ver = sys.argv[1]
 rev = int(sys.argv[2])
-raw = sys.argv[3]
+host_tag = sys.argv[3].lower()
+raw = sys.argv[4]
 
 try:
     data = json.loads(raw)
@@ -115,15 +134,23 @@ bottle_stable = (data.get("bottle") or {}).get("stable") or {}
 files = bottle_stable.get("files") or {}
 rebuild = int(bottle_stable.get("rebuild") or 0)
 
-# Priority order of Intel / Universal bottle tags
-priority = [
-    "x86_64_tahoe", "tahoe",
-    "x86_64_sequoia", "sequoia",
-    "x86_64_sonoma", "sonoma",
-    "x86_64_ventura", "ventura",
-    "x86_64_monterey", "monterey",
-    "all",
-]
+# Build priority list: host OS tag first, then older backward-compatible macOS versions,
+# then universal 'all', then newer macOS versions as last resort.
+macos_generations = ["monterey", "ventura", "sonoma", "sequoia", "tahoe"]
+
+# Find index of host tag (fallback to sequoia if unknown)
+clean_host = host_tag.replace("x86_64_", "")
+host_idx = macos_generations.index(clean_host) if clean_host in macos_generations else 3
+
+older_generations = list(reversed(macos_generations[:host_idx]))
+newer_generations = macos_generations[host_idx + 1:]
+
+priority = [f"x86_64_{clean_host}", clean_host]
+for g in older_generations:
+    priority.extend([f"x86_64_{g}", g])
+priority.append("all")
+for g in newer_generations:
+    priority.extend([f"x86_64_{g}", g])
 
 for tag in priority:
     if tag in files:

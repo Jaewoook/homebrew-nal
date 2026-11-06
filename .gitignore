@@ -1,4 +1,5 @@
 .superpowers/
 docs/
+.host_state/
 *.bottle.tar.gz
 *.bottle.json

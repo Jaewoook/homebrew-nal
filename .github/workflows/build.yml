@@ -94,6 +94,8 @@ jobs:
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
           HOMEBREW_NO_ASK: '1'
           NONINTERACTIVE: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build_bottle.sh "$FORMULA_NAME"
 
       - name: Commit updated formula bottle block

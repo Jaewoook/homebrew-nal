@@ -165,11 +165,17 @@ FORMULAS=$(echo "$FORMULAS" | tr ',' ' ')
 CASKS=$(echo "$CASKS" | tr ',' ' ')
 
 # If neither formulas nor casks were explicitly provided, default formulas to "llvm gcc"
-# and casks to any tracked keys in .cask-versions.json
+# and casks to any tracked keys in .cask-versions.json or existing Casks/*.rb
 if [[ -z "${FORMULAS// /}" && -z "${CASKS// /}" ]]; then
   FORMULAS="llvm gcc"
   if [[ -f "$CASK_STATE_FILE" ]] && command -v jq >/dev/null 2>&1; then
     CASKS=$(jq -r 'keys | join(" ")' "$CASK_STATE_FILE" 2>/dev/null || echo "")
+  fi
+  if [[ -z "${CASKS// /}" ]]; then
+    for c in Casks/*.rb; do
+      [ -f "$c" ] || continue
+      CASKS+="$(basename "$c" .rb) "
+    done
   fi
 fi
 

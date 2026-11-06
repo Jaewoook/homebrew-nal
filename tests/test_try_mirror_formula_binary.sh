@@ -67,6 +67,53 @@ if ! echo "$OUT_A" | grep -q "FAST_PATH_A:sonoma:https://ghcr.io/v2/homebrew/cor
   exit 1
 fi
 
+# 2b. Test host OS prioritization: when both tahoe and sequoia exist, sequoia must be preferred on sequoia host
+cat <<'EOF' > "$TMP_DIR/Formula/multi_os.rb"
+class MultiOs < Formula
+  desc "Multi OS formula"
+  url "https://example.com/multi-os-1.0.0.tar.gz"
+  version "1.0.0"
+end
+EOF
+
+cat <<'EOF' > "$TMP_DIR/mock_bin/curl"
+#!/usr/bin/env bash
+URL="${!#}"
+if [[ "$URL" == *"formulae.brew.sh/api/formula/multi_os.json"* ]]; then
+  cat <<'JSON'
+{
+  "name": "multi_os",
+  "versions": { "stable": "1.0.0" },
+  "revision": 0,
+  "bottle": {
+    "stable": {
+      "rebuild": 0,
+      "files": {
+        "tahoe": {
+          "url": "https://ghcr.io/v2/homebrew/core/multi_os/blobs/sha256:tahoeblob",
+          "sha256": "tahoeblob"
+        },
+        "sequoia": {
+          "url": "https://ghcr.io/v2/homebrew/core/multi_os/blobs/sha256:sequoiablob",
+          "sha256": "sequoiablob"
+        }
+      }
+    }
+  }
+}
+JSON
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$TMP_DIR/mock_bin/curl"
+
+OUT_MULTI=$(cd "$TMP_DIR" && PATH="$TMP_DIR/mock_bin:$PATH" bash "$MIRROR_HELPER" multi_os --dry-run)
+if ! echo "$OUT_MULTI" | grep -q "FAST_PATH_A:sequoia:"; then
+  echo "Assertion failed: expected sequoia tag priority over tahoe, got: $OUT_MULTI"
+  exit 1
+fi
+
 # 3. Standalone GitHub formula without x86_64 GHCR bottle (Fast-Path B dry-run check)
 cat <<'EOF' > "$TMP_DIR/Formula/gitleaks.rb"
 class Gitleaks < Formula

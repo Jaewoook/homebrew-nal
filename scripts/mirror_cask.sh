@@ -29,10 +29,11 @@ if [ -z "${GITHUB_ACTIONS:-}" ] && [ "${SKIP_HOST_RESTORE:-false}" != "true" ] &
 fi
 
 # 1. Parse Cask metadata for Intel (x86_64)
-PARSED_META=$(python3 - "$CASK_FILE" <<'PY'
+PARSED_META=$(python3 - "$CASK_FILE" "$CASK_NAME" <<'PY'
 import re, sys, urllib.parse
 
 rb_path = sys.argv[1]
+cask_name = sys.argv[2]
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
 
@@ -104,11 +105,13 @@ for k, v in replacements.items():
     resolved_url = resolved_url.replace(k, v)
 
 parsed_url = urllib.parse.urlparse(resolved_url)
-basename = parsed_url.path.rstrip("/").split("/")[-1]
-if not basename:
-    basename = f"cask-binary-{csv_parts[0]}.dmg"
+raw_basename = parsed_url.path.rstrip("/").split("/")[-1]
+clean_basename = urllib.parse.unquote(raw_basename)
+clean_basename = re.sub(r'[\s#?&]+', '_', clean_basename)
+if not clean_basename or "." not in clean_basename:
+    clean_basename = f"{cask_name}-{csv_parts[0]}.dmg"
 
-print(f"{csv_parts[0]}|{sha256}|{resolved_url}|{basename}")
+print(f"{csv_parts[0]}|{sha256}|{resolved_url}|{clean_basename}")
 PY
 ) || {
   echo "::error::Failed to parse or validate Intel support for Cask $CASK_NAME" >&2
@@ -206,35 +209,65 @@ rb_path, version, sha, mirrored_url = sys.argv[1:5]
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
 
-# 1. Replace multi-line or single-line sha256 (including arm:/intel: pairs)
-content = re.sub(
-    r'^(\s*)sha256\s+(?:arm:\s*"[^"]+"\s*,\s*intel:\s*"[^"]+"|intel:\s*"[^"]+"\s*,\s*arm:\s*"[^"]+"|"[^"]+"|:no_check)',
-    rf'\1sha256 "{sha}"',
-    content,
-    count=1,
-    flags=re.MULTILINE | re.DOTALL,
-)
+has_on_intel = bool(re.search(r'\bon_intel\s+do\b', content))
 
-# 2. If on_intel block exists with a url, rewrite the url inside on_intel; otherwise rewrite the top-level url
-def rewrite_url_in_block(text: str) -> str:
-    return re.sub(
-        r'^(\s*)url\s+"[^"]+"(?:\s*,\s*\n(?:\s+[a-z_]+:.*\n)+)?',
-        rf'\1url "{mirrored_url}"',
-        text,
-        count=1,
-        flags=re.MULTILINE,
-    )
+if has_on_intel:
+    def rewrite_intel_block(m):
+        header, body, footer = m.group(1), m.group(2), m.group(3)
+        # Rewrite url inside on_intel
+        body = re.sub(
+            r'^(\s*)url\s+"[^"]+"(?:\s*,\s*\n(?:\s+[a-z_]+:.*\n)+)?',
+            rf'\1url "{mirrored_url}"',
+            body,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        # Rewrite sha256 inside on_intel if present
+        body = re.sub(
+            r'^(\s*)sha256\s+"[^"]+"',
+            rf'\1sha256 "{sha}"',
+            body,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        return header + body + footer
 
-if re.search(r'\bon_intel\s+do\b.*?\burl\s+"[^"]+".*?\bend\b', content, re.DOTALL):
     content = re.sub(
         r'(\bon_intel\s+do\b)(.*?)(\bend\b)',
-        lambda m: m.group(1) + rewrite_url_in_block(m.group(2)) + m.group(3),
+        rewrite_intel_block,
         content,
         count=1,
         flags=re.DOTALL,
     )
-else:
-    content = rewrite_url_in_block(content)
+
+# Rewrite intel sha256 if defined top-level (e.g. sha256 arm: "...", intel: "...")
+if re.search(r'sha256\s+.*?intel:\s*"[^"]+"', content, re.DOTALL):
+    content = re.sub(
+        r'(sha256\s+.*?intel:\s*)"[^"]+"',
+        rf'\1"{sha}"',
+        content,
+        count=1,
+        flags=re.DOTALL,
+    )
+elif not has_on_intel:
+    # Single top-level sha256
+    content = re.sub(
+        r'^(\s*)sha256\s+(?:"[^"]+"|:no_check)',
+        rf'\1sha256 "{sha}"',
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+# If there is no on_intel block, rewrite the top-level url
+if not has_on_intel:
+    content = re.sub(
+        r'^(\s*)url\s+"[^"]+"(?:\s*,\s*\n(?:\s+[a-z_]+:.*\n)+)?',
+        rf'\1url "{mirrored_url}"',
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
 
 with open(rb_path, "w", encoding="utf-8") as f:
     f.write(content)
