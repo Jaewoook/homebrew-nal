@@ -107,8 +107,8 @@ for k, v in replacements.items():
 parsed_url = urllib.parse.urlparse(resolved_url)
 raw_basename = parsed_url.path.rstrip("/").split("/")[-1]
 clean_basename = urllib.parse.unquote(raw_basename)
-clean_basename = re.sub(r'[\s#?&]+', '_', clean_basename)
-if not clean_basename or "." not in clean_basename:
+clean_basename = re.sub(r'[^a-zA-Z0-9._-]', '_', clean_basename)
+if not clean_basename or clean_basename.startswith(".") or "." not in clean_basename:
     clean_basename = f"{cask_name}-{csv_parts[0]}.dmg"
 
 print(f"{csv_parts[0]}|{sha256}|{resolved_url}|{clean_basename}")
@@ -240,15 +240,13 @@ if has_on_intel:
         flags=re.DOTALL,
     )
 
-# Rewrite intel sha256 if defined top-level (e.g. sha256 arm: "...", intel: "...")
-if re.search(r'sha256\s+.*?intel:\s*"[^"]+"', content, re.DOTALL):
-    content = re.sub(
-        r'(sha256\s+.*?intel:\s*)"[^"]+"',
-        rf'\1"{sha}"',
-        content,
-        count=1,
-        flags=re.DOTALL,
-    )
+# Rewrite intel sha256 if defined top-level (e.g. sha256 arm: "...", intel: "..." or sha256 intel: "...", arm: "...")
+sha_top_intel_pattern = r'(sha256\s+(?:arm:\s*"[^"]+"\s*,\s*)?intel:\s*)"[^"]+"'
+sha_top_intel_reverse = r'(sha256\s+intel:\s*)"[^"]+"'
+if re.search(sha_top_intel_pattern, content, re.DOTALL):
+    content = re.sub(sha_top_intel_pattern, rf'\1"{sha}"', content, count=1, flags=re.DOTALL)
+elif re.search(sha_top_intel_reverse, content, re.DOTALL):
+    content = re.sub(sha_top_intel_reverse, rf'\1"{sha}"', content, count=1, flags=re.DOTALL)
 elif not has_on_intel:
     # Single top-level sha256
     content = re.sub(

@@ -77,4 +77,24 @@ if [ "$SYNCED_CASKS" != "ghostty" ]; then
   exit 1
 fi
 
+# Test scheduled sync union: .cask-versions.json has ghostty, Casks/ has extra.rb
+touch "$TMP_DIR/Casks/extra.rb"
+(
+  cd "$TMP_DIR"
+  # Run in scheduled mode (no formulas or casks arguments)
+  PATH="$TMP_DIR/mock_bin:$PATH" GITHUB_OUTPUT="$OUTPUT_FILE" bash "$TMP_DIR/scripts/sync_formulas.sh" --dry-run > "$TMP_DIR/scheduled.log" 2>&1 || true
+)
+
+if ! grep -q "Checking cask: extra" "$TMP_DIR/scheduled.log"; then
+  echo "Assertion failed: extra.rb in Casks/ was not checked during scheduled sync"
+  cat "$TMP_DIR/scheduled.log"
+  exit 1
+fi
+
+if ! grep -q "Checking cask: ghostty" "$TMP_DIR/scheduled.log"; then
+  echo "Assertion failed: ghostty in .cask-versions.json was not checked during scheduled sync"
+  cat "$TMP_DIR/scheduled.log"
+  exit 1
+fi
+
 echo "All sync_casks tests passed!"
