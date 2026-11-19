@@ -62,11 +62,11 @@ class Openjdk < Formula
 
   depends_on "autoconf" => :build
   depends_on "pkgconf" => :build
-  depends_on "freetype"
-  depends_on "giflib"
-  depends_on "harfbuzz"
+  depends_on "jaewoook/nal/freetype"
+  depends_on "jaewoook/nal/giflib"
+  depends_on "jaewoook/nal/harfbuzz"
   depends_on "jaewoook/nal/jpeg-turbo"
-  depends_on "libpng"
+  depends_on "jaewoook/nal/libpng"
   depends_on "jaewoook/nal/little-cms2"
 
   uses_from_macos "unzip" => :build
