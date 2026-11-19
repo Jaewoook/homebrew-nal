@@ -309,5 +309,11 @@
     "sha256": "8acf5e0f22700b2c18fb5419721ccc0bf7a202dfc27d5b36543166222589ec3d",
     "last_updated": "2026-10-23T18:58:21Z",
     "is_dependency": true
+  },
+  "openjdk": {
+    "version": "27.0.1.1",
+    "revision": 0,
+    "sha256": "dd7a5484168f8af7f68b68752e9538b89258c5f1e50ce6ff71e80fb04da83ed6",
+    "last_updated": "2026-11-19T11:04:53Z"
   }
 }
