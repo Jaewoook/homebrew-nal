@@ -52,12 +52,9 @@ class Freetype < Formula
   end
 
   bottle do
-    rebuild 1
-    sha256 cellar: :any, arm64_golden_gate: "14bc1768b07e0c28391877d3ead21f66f76fd70fea699ad996a693c01a5f660f"
-    sha256 cellar: :any, arm64_tahoe:       "ebd689edade12b47b19101a31ee018dc6c156b0f4fb2f852741c0c44fbf99fd0"
-    sha256 cellar: :any, arm64_sequoia:     "74ee3577ff475f019e379070f89dca205e9d90742fe18623722ea455482a4d05"
-    sha256 cellar: :any, arm64_linux:       "ba8302f77365b87d28b3863f220b18a008dea8b99056d130696f62f0df861b1d"
-    sha256 cellar: :any, x86_64_linux:      "5d26870c73d88cba6bb55b200d4156a9eb24c8ad4ef9cff547cf0da65163a2f9"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/freetype.2.15.0"
+    rebuild 2
+    sha256 cellar: :any, sequoia: "af1b42f6e54b86f3f4a95ea7958ae63122923d3abaae4863b6cf670ee02f32e7"
   end
 
   depends_on "pkgconf" => :build
