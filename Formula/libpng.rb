@@ -12,11 +12,9 @@ class Libpng < Formula
   end
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "7e04225ac0bc048d2b12c603f678e5fa36459909812f2f1306dbd97af337cdec"
-    sha256 cellar: :any, arm64_tahoe:       "de1c24778cb63a442682c1e6a391560662046a68c2f0c207ecb4abbc81e98cff"
-    sha256 cellar: :any, arm64_sequoia:     "6461c4dde6a693b559c531357b32126bd649ab67f53db5a5b70c25a5c12de4f1"
-    sha256 cellar: :any, arm64_linux:       "51e66ffc9fe346bc8a42733a5c0ef451d85a7a83192e57e313cc945ed788f210"
-    sha256 cellar: :any, x86_64_linux:      "8955801e64761d8552a9cc206195694a438ab0b87cfe69f9ddbe9c29f69cfc50"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/libpng.1.6.59"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "2f0394d96d55f86ec78196bc355f5b162a3b441c7a6b4c50fac2b8d674972319"
   end
 
   head do
