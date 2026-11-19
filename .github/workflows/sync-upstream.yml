@@ -66,9 +66,8 @@ jobs:
           WITH_DEPS: ${{ inputs.with_deps || 'false' }}
           GIT_BRANCH: 'main'
         run: |
-          chmod +x scripts/*.sh
           EXTRA_ARGS=(--commit --push)
           if [ "${WITH_DEPS}" = "true" ]; then
             EXTRA_ARGS+=(--with-deps)
           fi
-          ./scripts/sync_formulas.sh "${EXTRA_ARGS[@]}"
+          bash scripts/sync_formulas.sh "${EXTRA_ARGS[@]}"
