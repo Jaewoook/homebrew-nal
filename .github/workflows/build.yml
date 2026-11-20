@@ -77,6 +77,9 @@ jobs:
         run: |
           TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
           mkdir -p "$(dirname "$TAP_DIR")"
+          if [ -d "$TAP_DIR" ] && [ ! -L "$TAP_DIR" ]; then
+            rm -rf "$TAP_DIR"
+          fi
           ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
           /usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
 

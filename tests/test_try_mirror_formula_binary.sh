@@ -115,13 +115,18 @@ if ! echo "$OUT_MULTI" | grep -q "FAST_PATH_A:sequoia:"; then
 fi
 
 # 3. Standalone GitHub formula without x86_64 GHCR bottle (Fast-Path B dry-run check)
+# Also verify array build/test tags ([:build, :test]) and on_linux runtime deps do not disqualify Fast-Path B
 cat <<'EOF' > "$TMP_DIR/Formula/gitleaks.rb"
 class Gitleaks < Formula
   desc "Audit git repos for secrets"
   homepage "https://github.com/gitleaks/gitleaks"
   url "https://github.com/gitleaks/gitleaks/archive/refs/tags/v8.24.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
-  depends_on "go" => :build
+  depends_on "go" => [:build, :test]
+
+  on_linux do
+    depends_on "zlib-ng-compat"
+  end
 end
 EOF
 

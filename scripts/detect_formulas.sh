@@ -58,7 +58,7 @@ elif [ "$EVENT_NAME" = "push" ]; then
   for name in $CHANGED; do
     if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]] && [ -f "Formula/${name}.rb" ]; then
       if grep -Fq 'root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/' "Formula/${name}.rb"; then
-        if ! echo "$RAW_DIFF" | grep -Eq "^Patches/${name}/"; then
+        if ! echo "$RAW_DIFF" | awk -v p="Patches/${name}/" 'substr($0, 1, length(p)) == p { found=1; exit } END { exit !found }'; then
           echo "Skipping ${name}: bottle block already present for homebrew-nal."
           continue
         fi

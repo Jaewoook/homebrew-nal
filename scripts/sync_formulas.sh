@@ -4,6 +4,10 @@
 # ==============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/formula_helpers.sh
+source "${SCRIPT_DIR}/formula_helpers.sh"
+
 UPSTREAM_RAW_BASE=${UPSTREAM_RAW_BASE:-"https://raw.githubusercontent.com/Homebrew/homebrew-core/master"}
 UPSTREAM_API_BASE=${UPSTREAM_API_BASE:-"https://formulae.brew.sh/api/formula"}
 UPSTREAM_CASK_RAW_BASE=${UPSTREAM_CASK_RAW_BASE:-"https://raw.githubusercontent.com/Homebrew/homebrew-cask/HEAD"}
@@ -345,8 +349,16 @@ for FORMULA in $FORMULAS; do
 
   # Strip directives that are only valid in official Homebrew taps (e.g. no_autobump!)
   SANITIZED_TMP=$(mktemp)
-  grep -v -E '^[[:space:]]*no_autobump!' "$TMP_RB" > "$SANITIZED_TMP"
+  grep -v -E '^[[:space:]]*no_autobump!' "$TMP_RB" > "$SANITIZED_TMP" || true
   mv "$SANITIZED_TMP" "$TMP_RB"
+
+  UPSTREAM_META=$(extract_formula_meta "$TMP_RB")
+  IFS='|' read -r PARSED_UPSTREAM_VER PARSED_UPSTREAM_REV UPSTREAM_ARM64_ONLY <<< "$UPSTREAM_META"
+  if [[ "$UPSTREAM_ARM64_ONLY" == "true" ]]; then
+    echo "  [SKIP] Formula '$FORMULA' requires :arm64 architecture on macOS and does not support x86_64." >&2
+    rm -f "$TMP_RB"
+    continue
+  fi
 
   UPSTREAM_SHA=$(calc_sha256 "$TMP_RB")
 
@@ -363,9 +375,8 @@ for FORMULA in $FORMULAS; do
 
   # Fallback: extract version/revision from .rb if API didn't return stable
   if [[ -z "$UPSTREAM_VER" ]]; then
-    UPSTREAM_REV=$(grep -E '^[[:space:]]*revision[[:space:]]+[0-9]+' "$TMP_RB" | awk '{print $2}' || echo "0")
-    UPSTREAM_REV=${UPSTREAM_REV:-0}
-    UPSTREAM_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$TMP_RB" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || true)
+    UPSTREAM_VER="${PARSED_UPSTREAM_VER}"
+    UPSTREAM_REV="${PARSED_UPSTREAM_REV:-0}"
   fi
 
   # 3. Retrieve local version & revision
@@ -379,11 +390,11 @@ for FORMULA in $FORMULAS; do
     LOCAL_REV=$(jq -r --arg n "$FORMULA" '.[$n].revision // 0' "$STATE_FILE" 2>/dev/null || echo "0")
     LOCAL_REV=${LOCAL_REV:-0}
 
-    # If state file was empty but local formula exists, fallback to regex
-    if [[ -z "$LOCAL_VER" ]]; then
-      LOCAL_REV=$(grep -E '^[[:space:]]*revision[[:space:]]+[0-9]+' "$LOCAL_PATH" | awk '{print $2}' || echo "0")
+    # If state file entry was missing or corrupt (e.g. "unknown", multiline, or path-like), fallback to formula parser
+    if [[ -z "$LOCAL_VER" || "$LOCAL_VER" == "unknown" || "$LOCAL_VER" == *$'\n'* || "$LOCAL_VER" == *"/"* ]]; then
+      LOCAL_META=$(extract_formula_meta "$LOCAL_PATH")
+      IFS='|' read -r LOCAL_VER LOCAL_REV _ <<< "$LOCAL_META"
       LOCAL_REV=${LOCAL_REV:-0}
-      LOCAL_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$LOCAL_PATH" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || true)
     fi
   fi
 
@@ -421,6 +432,12 @@ for FORMULA in $FORMULAS; do
     UPDATED_LIST+=("$FORMULA")
     rm -f "$TMP_RB"
     continue
+  fi
+
+  # Fetch any patches referenced by the formula in Patches/ before modifying repository files
+  if ! fetch_referenced_patches "$TMP_RB" "$UPSTREAM_RAW_BASE" "Patches" "true"; then
+    rm -f "$TMP_RB"
+    exit 1
   fi
 
   # Auto-preserve previous major version as <formula>@<prev_version> on major bumps
@@ -464,18 +481,30 @@ for FORMULA in $FORMULAS; do
       fi
 
       if [[ "$CANDIDATE_FOUND" == "true" ]]; then
+        SANITIZED_CANDIDATE=$(mktemp)
+        grep -v -E '^[[:space:]]*no_autobump!' "$TMP_CANDIDATE" > "$SANITIZED_CANDIDATE" || true
+        rm -f "$TMP_CANDIDATE"
+
+        CANDIDATE_META=$(extract_formula_meta "$SANITIZED_CANDIDATE")
+        IFS='|' read -r CANDIDATE_VER CANDIDATE_REV CANDIDATE_ARM64_ONLY <<< "$CANDIDATE_META"
+        if [[ "$CANDIDATE_ARM64_ONLY" == "true" ]]; then
+          echo "  [AUTO-PRESERVE] Skipping $CANDIDATE: requires :arm64 architecture on macOS." >&2
+          rm -f "$SANITIZED_CANDIDATE"
+          continue
+        fi
+
         echo "  [AUTO-PRESERVE] Major version bump detected (${LOCAL_VER} -> ${FULL_VER})."
         echo "                  Preserving previous version as: $CANDIDATE"
 
-        grep -v -E '^[[:space:]]*no_autobump!' "$TMP_CANDIDATE" > "$CANDIDATE_PATH"
-        rm -f "$TMP_CANDIDATE"
+        if ! fetch_referenced_patches "$SANITIZED_CANDIDATE" "$UPSTREAM_RAW_BASE" "Patches" "true"; then
+          rm -f "$SANITIZED_CANDIDATE" "$TMP_RB"
+          exit 1
+        fi
+
+        mv "$SANITIZED_CANDIDATE" "$CANDIDATE_PATH"
 
         CANDIDATE_SHA=$(calc_sha256 "$CANDIDATE_PATH")
-        CANDIDATE_VER=$(grep -E '^[[:space:]]*version[[:space:]]+' "$CANDIDATE_PATH" | head -n 1 | awk '{print $2}' | tr -d '"'\''' || echo "$LOCAL_VER")
-        if [[ -z "$CANDIDATE_VER" ]]; then
-          CANDIDATE_VER=$(grep -oE 'url[[:space:]]+".*-(.*)\.tar' "$CANDIDATE_PATH" | sed -E 's/.*-(.*)\.tar/\1/' || echo "$LOCAL_VER")
-        fi
-        CANDIDATE_REV=$(grep -E '^[[:space:]]*revision[[:space:]]+[0-9]+' "$CANDIDATE_PATH" | awk '{print $2}' || echo "0")
+        CANDIDATE_VER=${CANDIDATE_VER:-$LOCAL_VER}
         CANDIDATE_REV=${CANDIDATE_REV:-0}
 
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -508,26 +537,6 @@ for FORMULA in $FORMULAS; do
       QUALIFY_ARGS+=("$(basename "$PRESERVED_CANDIDATE_PATH" .rb)")
     fi
     bash "$SCRIPT_DIR/qualify_dependencies.sh" "${QUALIFY_ARGS[@]}" >/dev/null
-  fi
-
-  # Fetch any patches referenced by the formula in Patches/
-  PATCH_FILES=$(grep -oE 'Patches/[a-zA-Z0-9._+-]+/[a-zA-Z0-9._/-]+' "$LOCAL_PATH" 2>/dev/null || true)
-  if [[ -n "$PATCH_FILES" ]]; then
-    mkdir -p "Patches"
-    for PATCH_REL in $PATCH_FILES; do
-      if [[ "$PATCH_REL" == *".."* ]] || ! python3 -c 'import os, sys; p = os.path.realpath(sys.argv[1]); b = os.path.realpath("Patches"); sys.exit(0 if p.startswith(b + os.sep) else 1)' "$PATCH_REL"; then
-        echo "  [ERROR] Refusing suspicious patch path: $PATCH_REL" >&2
-        continue
-      fi
-      PATCH_URL="${UPSTREAM_RAW_BASE}/${PATCH_REL}"
-      echo "  [PATCH] Downloading referenced patch: $PATCH_REL"
-      mkdir -p "$(dirname "$PATCH_REL")"
-      if curl -sSfL "$PATCH_URL" -o "$PATCH_REL"; then
-        echo "  [PATCH] Saved $PATCH_REL"
-      else
-        echo "  [WARN] Failed to download patch from $PATCH_URL" >&2
-      fi
-    done
   fi
 
   # Update state JSON
@@ -573,10 +582,19 @@ if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true
   echo "Syncing runtime dependencies for updated formulas: ${UPDATED_LIST[*]}"
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [[ -f "$SCRIPT_DIR/sync_dependencies.sh" ]]; then
-    bash "$SCRIPT_DIR/sync_dependencies.sh" "${UPDATED_LIST[@]}"
+    bash "$SCRIPT_DIR/sync_dependencies.sh" \
+      --formula-dir "$FORMULA_DIR" \
+      --state-file "$STATE_FILE" \
+      --upstream-base "$UPSTREAM_RAW_BASE" \
+      --upstream-api-base "$UPSTREAM_API_BASE" \
+      "${UPDATED_LIST[@]}"
   fi
   if [[ "$AUTO_COMMIT" == "true" ]]; then
-    git_commit "Register runtime dependencies for ${UPDATED_LIST[*]}" "$FORMULA_DIR" "$STATE_FILE"
+    DEP_FILES_TO_STAGE=("$FORMULA_DIR" "$STATE_FILE")
+    if [[ -d "Patches" ]]; then
+      DEP_FILES_TO_STAGE+=("Patches")
+    fi
+    git_commit "Register runtime dependencies for ${UPDATED_LIST[*]}" "${DEP_FILES_TO_STAGE[@]}"
   fi
 fi
 

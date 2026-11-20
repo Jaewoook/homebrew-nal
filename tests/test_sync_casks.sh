@@ -9,6 +9,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/Formula" "$TMP_DIR/Casks" "$TMP_DIR/mock_bin"
 cp "$SYNC_SCRIPT" "$TMP_DIR/scripts/sync_formulas.sh"
+cp "${SCRIPT_DIR}/scripts/formula_helpers.sh" "$TMP_DIR/scripts/formula_helpers.sh"
 echo "{}" > "$TMP_DIR/.formula-versions.json"
 echo "{}" > "$TMP_DIR/.cask-versions.json"
 

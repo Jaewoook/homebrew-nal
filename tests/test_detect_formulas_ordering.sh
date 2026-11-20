@@ -81,4 +81,34 @@ if ! echo "$EXPANDED_JSON" | jq -e 'index("app_a")' >/dev/null || ! echo "$EXPAN
   exit 1
 fi
 
+# Test literal prefix matching for formula names containing '+' when Patches/<name>/ changes
+git -C "$TMP_DIR" init -q
+git -C "$TMP_DIR" checkout -b main -q
+mkdir -p "$TMP_DIR/Patches/gtk+3"
+cat <<'EOF' > "$TMP_DIR/Formula/gtk+3.rb"
+class GtkAT3 < Formula
+  desc "GTK+ 3"
+  bottle do
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/gtk+3.3.24.0"
+  end
+end
+EOF
+echo "diff1" > "$TMP_DIR/Patches/gtk+3/fix.diff"
+git -C "$TMP_DIR" add Formula/gtk+3.rb Patches/gtk+3/fix.diff
+git -C "$TMP_DIR" -c user.name="Test" -c user.email="test@test.com" commit -m "Add gtk+3" --no-gpg-sign -q
+echo "diff2" > "$TMP_DIR/Patches/gtk+3/fix.diff"
+git -C "$TMP_DIR" add Patches/gtk+3/fix.diff
+git -C "$TMP_DIR" -c user.name="Test" -c user.email="test@test.com" commit -m "Update gtk+3 patch" --no-gpg-sign -q
+
+OUT_PLUS="$TMP_DIR/out_plus.txt"
+(
+  cd "$TMP_DIR"
+  EVENT_NAME="push" GITHUB_OUTPUT="$OUT_PLUS" bash scripts/detect_formulas.sh
+)
+PLUS_JSON=$(grep '^formulas=' "$OUT_PLUS" | cut -d= -f2-)
+if [ "$PLUS_JSON" != '["gtk+3"]' ]; then
+  echo "Assertion failed: expected [\"gtk+3\"] on patch change, got: $PLUS_JSON"
+  exit 1
+fi
+
 echo "All detect_formulas ordering tests passed!"

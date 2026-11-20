@@ -55,7 +55,7 @@ fi
 
 git add -- "$CASK_FILE"
 if ! git diff --staged --quiet; then
-  git "${GIT_SIGN_ARGS[@]}" commit -m "cask(${CASK_NAME}): mirror binary for ${CASK_VERSION}"
+  git "${GIT_SIGN_ARGS[@]}" commit -m "cask(${CASK_NAME}): mirror binary for ${CASK_VERSION}" -m "[skip ci]"
   git "${GIT_SIGN_ARGS[@]}" pull --rebase origin main
   git push origin main
 else

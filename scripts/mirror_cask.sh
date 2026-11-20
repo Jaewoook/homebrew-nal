@@ -50,14 +50,14 @@ if arch_match:
     if intel_m:
         arch_val = intel_m.group(1)
 
-# Extract on_intel block if present
+# Extract on_intel block if present (indentation-anchored so nested if/end does not truncate)
 intel_block = ""
-intel_block_m = re.search(r'\bon_intel\s+do\b(.*?)\bend\b', content, re.DOTALL)
+intel_block_m = re.search(r'^([ \t]*)on_intel\s+do\b(.*?)^\1end\b', content, re.MULTILINE | re.DOTALL)
 if intel_block_m:
-    intel_block = intel_block_m.group(1)
+    intel_block = intel_block_m.group(2)
 
 # Remove on_arm block so we don't accidentally match arm64 version/url/sha256
-content_no_arm = re.sub(r'\bon_arm\s+do\b.*?\bend\b', '', content, flags=re.DOTALL)
+content_no_arm = re.sub(r'^([ \t]*)on_arm\s+do\b.*?^\1end\b', '', content, flags=re.MULTILINE | re.DOTALL)
 
 # Extract version (prefer on_intel version if overridden)
 ver_m = re.search(r'^\s*version\s+"([^"]+)"', intel_block, re.MULTILINE) or re.search(r'^\s*version\s+"([^"]+)"', content_no_arm, re.MULTILINE)
@@ -166,7 +166,7 @@ if [[ "${SKIP_ARCH_BINARY_MOUNT:-false}" != "true" ]] && command -v lipo >/dev/n
           break
         fi
       fi
-    done < <(find "$dir" -maxdepth 5 -type f -print0 2>/dev/null)
+    done < <(find "$dir" -maxdepth 8 -type f -print0 2>/dev/null)
     if [[ $found_macho -eq 1 && $found_x86 -eq 0 ]]; then
       echo "::error::Cask $CASK_NAME contains Mach-O binaries but none support x86_64!" >&2
       return 1
@@ -197,6 +197,7 @@ if [[ "${SKIP_ARCH_BINARY_MOUNT:-false}" != "true" ]] && command -v lipo >/dev/n
   esac
   rm -rf "$VERIFY_TMP"
   if [[ $VERIFY_STATUS -ne 0 ]]; then
+    rm -f -- "$ASSET_FILENAME"
     exit 1
   fi
 fi
@@ -209,22 +210,24 @@ rb_path, version, sha, mirrored_url = sys.argv[1:5]
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
 
-has_on_intel = bool(re.search(r'\bon_intel\s+do\b', content))
+has_on_intel = bool(re.search(r'^[ \t]*on_intel\s+do\b', content, re.MULTILINE))
+
+url_pattern = r'^([ \t]*)url\s+"[^"]+"(?:[ \t]*,[ \t]*(?:\n(?:\s+[a-z_]+:[^\n]*(?:\n|$))+|[^\n]*))?'
 
 if has_on_intel:
     def rewrite_intel_block(m):
         header, body, footer = m.group(1), m.group(2), m.group(3)
         # Rewrite url inside on_intel
         body = re.sub(
-            r'^(\s*)url\s+"[^"]+"(?:\s*,\s*\n(?:\s+[a-z_]+:.*\n)+)?',
-            rf'\1url "{mirrored_url}"',
+            url_pattern,
+            lambda um: f'{um.group(1)}url "{mirrored_url}"' + ('\n' if um.group(0).endswith('\n') else ''),
             body,
             count=1,
             flags=re.MULTILINE,
         )
         # Rewrite sha256 inside on_intel if present
         body = re.sub(
-            r'^(\s*)sha256\s+"[^"]+"',
+            r'^(\s*)sha256\s+(?:"[^"]+"|:no_check)',
             rf'\1sha256 "{sha}"',
             body,
             count=1,
@@ -233,11 +236,11 @@ if has_on_intel:
         return header + body + footer
 
     content = re.sub(
-        r'(\bon_intel\s+do\b)(.*?)(\bend\b)',
+        r'^([ \t]*on_intel\s+do\b)(.*?)(^[ \t]*end\b)',
         rewrite_intel_block,
         content,
         count=1,
-        flags=re.DOTALL,
+        flags=re.MULTILINE | re.DOTALL,
     )
 
 # Rewrite intel sha256 if defined top-level (e.g. sha256 arm: "...", intel: "..." or sha256 intel: "...", arm: "...")
@@ -260,8 +263,8 @@ elif not has_on_intel:
 # If there is no on_intel block, rewrite the top-level url
 if not has_on_intel:
     content = re.sub(
-        r'^(\s*)url\s+"[^"]+"(?:\s*,\s*\n(?:\s+[a-z_]+:.*\n)+)?',
-        rf'\1url "{mirrored_url}"',
+        url_pattern,
+        lambda um: f'{um.group(1)}url "{mirrored_url}"' + ('\n' if um.group(0).endswith('\n') else ''),
         content,
         count=1,
         flags=re.MULTILINE,

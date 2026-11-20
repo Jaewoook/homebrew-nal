@@ -50,6 +50,18 @@ if [[ ! "$FORMULA_VERSION" =~ ^[a-zA-Z0-9._+-]+$ ]]; then
   exit 1
 fi
 
+# Fail fast if the formula has an unsatisfied architecture requirement (e.g. depends_on arch: :arm64)
+if ! /usr/local/bin/brew ruby -e '
+  f = Formula["jaewoook/nal/#{ARGV[0]}"]
+  unsatisfied = f.requirements.select { |r| r.is_a?(ArchRequirement) && !r.satisfied? }
+  unless unsatisfied.empty?
+    $stderr.puts "::error::Formula #{ARGV[0]} (#{f.pkg_version}) cannot build on x86_64: #{unsatisfied.map(&:message).join("; ")}"
+    exit 1
+  end
+' -- "$FORMULA_NAME"; then
+  exit 1
+fi
+
 RELEASE_TAG="${FORMULA_NAME}.${FORMULA_VERSION}"
 RELEASE_TITLE="${FORMULA_NAME} ${FORMULA_VERSION}"
 
@@ -128,7 +140,7 @@ fi
 # Normalize bottle archive filename: rename double-hyphen to single-hyphen
 for f in "${FORMULA_NAME}"--*.tar.gz; do
   [ -f "$f" ] || continue
-  TARGET_NAME="${f/--/-}"
+  TARGET_NAME="${f/"${FORMULA_NAME}--"/"${FORMULA_NAME}-"}"
   echo "Renaming bottle archive $f -> $TARGET_NAME"
   mv -- "$f" "$TARGET_NAME"
 done

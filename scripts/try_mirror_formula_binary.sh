@@ -42,7 +42,7 @@ if grep -Eq '^[[:space:]]*depends_on[[:space:]]+"jaewoook/nal/' "$FORMULA_FILE";
   exit 1
 fi
 
-if grep -Eq '^[[:space:]]*patch[[:space:]]+do' "$FORMULA_FILE" || [ -d "Patches/${FORMULA_NAME}" ]; then
+if grep -Eq '^[[:space:]]*patch([[:space:]]+(:p[0-9]+[[:space:]]*,[[:space:]]*)?do\b|[[:space:]]+:DATA\b)' "$FORMULA_FILE" || [ -d "Patches/${FORMULA_NAME}" ]; then
   echo "Formula $FORMULA_NAME has custom patches; requires source build."
   exit 1
 fi
@@ -237,12 +237,25 @@ rb_path, base_ver = sys.argv[1], sys.argv[2]
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
 
-# Check runtime dependencies: any depends_on without :build or :test or :macos/:xcode disqualifies Fast-Path B
+# Check runtime dependencies: any depends_on outside on_linux/on_arm without :build, :test, :macos, or :xcode disqualifies Fast-Path B
+skip_indent = None
 for line in content.splitlines():
     stripped = line.strip()
-    if stripped.startswith("#") or not stripped.startswith("depends_on"):
+    if not stripped or stripped.startswith("#"):
         continue
-    if "=> :build" in stripped or "=> :test" in stripped or "depends_on :macos" in stripped or "depends_on :xcode" in stripped:
+    indent_m = re.match(r'^([ \t]*)', line)
+    indent = indent_m.group(1) if indent_m else ""
+    if skip_indent is not None:
+        if indent == skip_indent and re.match(r'^[ \t]*end\b', line):
+            skip_indent = None
+        continue
+    if re.match(r'^[ \t]*on_(?:linux|arm)\s+do\b', line) and not re.search(r'\bend\s*$', stripped):
+        skip_indent = indent
+        continue
+    if not stripped.startswith("depends_on"):
+        continue
+    code_only = re.sub(r'#.*$', '', stripped)
+    if re.search(r'=>.*:(build|test)\b', code_only) or "depends_on :macos" in code_only or "depends_on :xcode" in code_only:
         continue
     # Found a runtime dependency
     sys.exit(0)

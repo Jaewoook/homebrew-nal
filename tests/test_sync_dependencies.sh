@@ -18,12 +18,32 @@ echo "{}" > "$TMP_DIR/.formula-versions.json"
 
 # Create a mock upstream directory with helper (Formula/h/) and libfoo (Formula/lib/)
 MOCK_UPSTREAM="$TMP_DIR/upstream"
-mkdir -p "$MOCK_UPSTREAM/Formula/h" "$MOCK_UPSTREAM/Formula/lib" "$MOCK_UPSTREAM/Formula/c" "$MOCK_UPSTREAM/Formula/l"
+mkdir -p "$MOCK_UPSTREAM/Formula/h" "$MOCK_UPSTREAM/Formula/lib" "$MOCK_UPSTREAM/Formula/c" "$MOCK_UPSTREAM/Formula/l" "$MOCK_UPSTREAM/Patches/helper"
+cat <<'EOF' > "$MOCK_UPSTREAM/Patches/helper/fix-paths.diff"
+--- a/foo
++++ b/foo
+@@ -1 +1 @@
+-old
++new
+EOF
+
 cat <<'EOF' > "$MOCK_UPSTREAM/Formula/h/helper.rb"
 class Helper < Formula
   desc "Helper library"
-  version "1.2.3"
+  url "https://example.com/helper-1.2.3-sources.tgz"
   depends_on "cmake" => [:build, :test]
+
+  resource "extra" do
+    url "https://example.com/extra-0.9.0.tar.gz"
+  end
+
+  fails_with :gcc do
+    version "11"
+  end
+
+  patch do
+    file "Patches/helper/fix-paths.diff"
+  end
 end
 EOF
 
@@ -31,6 +51,7 @@ cat <<'EOF' > "$MOCK_UPSTREAM/Formula/lib/libfoo.rb"
 class Libfoo < Formula
   desc "Libfoo library sharded under Formula/lib"
   version "1.0.0"
+  depends_on "helper"
 end
 EOF
 
@@ -111,6 +132,67 @@ fi
 IS_LIBFOO_DEP=$(jq -r '.libfoo.is_dependency // false' "$TMP_DIR/.formula-versions.json")
 if [ "$IS_LIBFOO_DEP" != "true" ]; then
   echo "Assertion failed: libfoo was not marked with is_dependency: true in .formula-versions.json"
+  exit 1
+fi
+
+# Verify that referenced patch for dependency formula was downloaded
+if [ ! -f "$TMP_DIR/Patches/helper/fix-paths.diff" ]; then
+  echo "Assertion failed: Patches/helper/fix-paths.diff was not downloaded"
+  exit 1
+fi
+
+# Verify accurate version extraction (must not pick up fails_with "11" or resource "0.9.0" or "unknown")
+HELPER_VER=$(jq -r '.helper.version // empty' "$TMP_DIR/.formula-versions.json")
+if [ "$HELPER_VER" != "1.2.3" ]; then
+  echo "Assertion failed: expected helper version '1.2.3', got '$HELPER_VER'"
+  exit 1
+fi
+
+# Verify existing valid state entry is not clobbered on re-run when formula already exists
+jq '.helper.last_updated = "2020-01-01T00:00:00Z"' "$TMP_DIR/.formula-versions.json" > "$TMP_DIR/.state.tmp" && mv "$TMP_DIR/.state.tmp" "$TMP_DIR/.formula-versions.json"
+bash "$SYNC_DEPS_SCRIPT" \
+  --formula-dir "$TMP_DIR/Formula" \
+  --state-file "$TMP_DIR/.formula-versions.json" \
+  --upstream-base "file://${MOCK_UPSTREAM}" \
+  --upstream-api-base "file://${MOCK_UPSTREAM}/api" \
+  --tap "jaewoook/nal" \
+  app
+PRESERVED_TS=$(jq -r '.helper.last_updated // empty' "$TMP_DIR/.formula-versions.json")
+if [ "$PRESERVED_TS" != "2020-01-01T00:00:00Z" ]; then
+  echo "Assertion failed: existing valid state entry timestamp was overwritten (got '$PRESERVED_TS')"
+  exit 1
+fi
+
+# Verify missing patch causes non-zero exit without creating formula/partial patch
+mkdir -p "$MOCK_UPSTREAM/Formula/b"
+cat <<'EOF' > "$MOCK_UPSTREAM/Formula/b/broken_dep.rb"
+class BrokenDep < Formula
+  desc "Missing patch dependency"
+  url "https://example.com/broken-1.0.0.tar.gz"
+  patch do
+    file "Patches/broken_dep/missing.diff"
+  end
+end
+EOF
+cat <<'EOF' > "$TMP_DIR/Formula/app_broken.rb"
+class AppBroken < Formula
+  desc "Broken App"
+  version "1.0.0"
+  depends_on "broken_dep"
+end
+EOF
+if bash "$SYNC_DEPS_SCRIPT" \
+  --formula-dir "$TMP_DIR/Formula" \
+  --state-file "$TMP_DIR/.formula-versions.json" \
+  --upstream-base "file://${MOCK_UPSTREAM}" \
+  --upstream-api-base "file://${MOCK_UPSTREAM}/api" \
+  --tap "jaewoook/nal" \
+  app_broken 2>/dev/null; then
+  echo "Assertion failed: sync_dependencies should fail when a referenced patch fails to download"
+  exit 1
+fi
+if [ -f "$TMP_DIR/Formula/broken_dep.rb" ] || [ -f "$TMP_DIR/Patches/broken_dep/missing.diff" ]; then
+  echo "Assertion failed: broken_dep.rb or partial patch was left behind after failed patch download"
   exit 1
 fi
 

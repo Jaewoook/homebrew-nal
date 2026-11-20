@@ -111,7 +111,7 @@ header_re = re.compile(
 tap_dep_re = re.compile(r'^(\s*depends_on\s+")' + re.escape(tap_name) + r'/([^"]+)(".*)$')
 plain_dep_re = re.compile(r'^(\s*depends_on\s+")([^"/]+)(".*)$')
 build_or_test_re = re.compile(r'=>.*:(build|test)\b')
-on_linux_start_re = re.compile(r'^(\s*)on_linux\s+do\b')
+on_linux_start_re = re.compile(r'^(\s*)on_(?:linux|arm)\s+do\b')
 
 for fname in sorted(os.listdir(formula_dir)):
     if not fname.endswith('.rb'):
@@ -133,7 +133,7 @@ for fname in sorted(os.listdir(formula_dir)):
         for line in lines:
             if linux_indent is None:
                 m_linux = on_linux_start_re.match(line)
-                if m_linux:
+                if m_linux and not re.search(r'\bend\s*$', line.strip()):
                     linux_indent = m_linux.group(1)
             else:
                 if re.match(r'^' + re.escape(linux_indent) + r'end\b', line):
@@ -144,8 +144,9 @@ for fname in sorted(os.listdir(formula_dir)):
             if m_tap:
                 line = m_tap.group(1) + m_tap.group(2) + m_tap.group(3) + ('\n' if line.endswith('\n') else '')
 
-            # Qualify runtime dependencies outside on_linux blocks if present in available_deps
-            if linux_indent is None and not build_or_test_re.search(line):
+            # Qualify runtime dependencies outside on_linux/on_arm blocks if present in available_deps
+            code_only = re.sub(r'#.*$', '', line)
+            if linux_indent is None and not build_or_test_re.search(code_only):
                 m_plain = plain_dep_re.match(line)
                 if m_plain:
                     dep_name = m_plain.group(2)

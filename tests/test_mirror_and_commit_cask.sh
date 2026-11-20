@@ -124,18 +124,22 @@ if ! grep -q 'intel: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0
   exit 1
 fi
 
-# 3b. Test multi-arch cask with sha256 inside on_arm and on_intel blocks (Docker style)
+# 3b. Test multi-arch cask with sha256 inside on_arm and on_intel blocks (Docker style) + nested if/end + inline url kwargs
 cat <<'EOF' > "$WORK_DIR/Casks/docker_style.rb"
 cask "docker_style" do
   version "4.35.0"
 
   on_arm do
-    sha256 "1111111111111111111111111111111111111111111111111111111111111111"
-    url "https://example.com/docker-#{version}-arm64.dmg"
+    if MacOS.version >= :sequoia
+      sha256 "1111111111111111111111111111111111111111111111111111111111111111"
+      url "https://example.com/docker-#{version}-arm64.dmg", verified: "example.com/"
+    end
   end
   on_intel do
-    sha256 "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-    url "https://example.com/docker-#{version}-amd64.dmg"
+    if MacOS.version >= :sequoia
+      sha256 "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      url "https://example.com/docker-#{version}-amd64.dmg", verified: "example.com/"
+    end
   end
 
   name "DockerStyle"
@@ -153,18 +157,23 @@ if ! grep -q 'sha256 "1111111111111111111111111111111111111111111111111111111111
   exit 1
 fi
 
-# Verify on_intel url is rewritten
-if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/cask-docker_style.4.35.0/docker-4.35.0-amd64.dmg"' "$WORK_DIR/Casks/docker_style.rb"; then
-  echo "Assertion failed: docker_style.rb on_intel url was not rewritten"
+# Verify on_intel url is rewritten without dangling verified: kwarg
+if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/cask-docker_style.4.35.0/docker-4.35.0-amd64.dmg"$' "$WORK_DIR/Casks/docker_style.rb"; then
+  echo "Assertion failed: docker_style.rb on_intel url was not cleanly rewritten"
   cat "$WORK_DIR/Casks/docker_style.rb"
   exit 1
 fi
 
-# 4. Test commit_cask.sh
+# 4. Test commit_cask.sh (subject line exact + [skip ci] in body)
 BOT_GPG_KEY="" GITHUB_OUTPUT="$OUT_FILE" bash "$COMMIT_CASK_SCRIPT" ghostty "1.1.2"
 LATEST_MSG=$(git log -1 --format="%s")
+FULL_MSG=$(git log -1 --format="%B")
 if [ "$LATEST_MSG" != "cask(ghostty): mirror binary for 1.1.2" ]; then
   echo "Assertion failed: expected commit message 'cask(ghostty): mirror binary for 1.1.2', got '$LATEST_MSG'"
+  exit 1
+fi
+if ! echo "$FULL_MSG" | grep -q '\[skip ci\]'; then
+  echo "Assertion failed: commit_cask.sh should include [skip ci] in commit body"
   exit 1
 fi
 

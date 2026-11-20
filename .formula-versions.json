@@ -123,35 +123,35 @@
     "last_updated": "2026-10-20T13:09:11Z"
   },
   "abseil": {
-    "version": "cpp/archive/refs/tags/20260817.0",
+    "version": "20260817.0",
     "revision": 0,
     "sha256": "21f8be8cabb087a980024bf8b4a0b5246cbdde9dd35a28ddcecd90ad947ae67d",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "ada-url": {
-    "version": "11",
+    "version": "4.0.0",
     "revision": 1,
     "sha256": "6946b8d647d80bfe1de1c8f6b2697f21590a6af0a62fb5658bc28f42febed79a",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "fmt": {
-    "version": "unknown",
+    "version": "12.2.0",
     "revision": 0,
     "sha256": "f9eb474bac2bb1866c2854bc819ff445a2f7ab49e48dfd2ffe6e4c12eb3dcddf",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "simdutf": {
-    "version": "unknown",
+    "version": "9.3.2",
     "revision": 0,
     "sha256": "d7f523c530ecf6a5191fbc7ae213d519db70fefe16ea129f28142f1aca72c2be",
     "last_updated": "2026-10-23T05:12:14Z",
     "is_dependency": true
   },
   "brotli": {
-    "version": "unknown",
+    "version": "1.2.1",
     "revision": 0,
     "sha256": "165993f6956a18957b2ce801aa397a6cb5c462d990b327ea558d599c4fd32800",
     "last_updated": "2026-11-19T11:04:53Z",
@@ -165,42 +165,42 @@
     "is_dependency": true
   },
   "hdrhistogram_c": {
-    "version": "unknown",
+    "version": "0.12.1",
     "revision": 0,
     "sha256": "b403beeb67fe7e0d71dcdd8e7f9097cb99382889b1c5e8c3c6145a42da5faa24",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "highway": {
-    "version": "unknown",
+    "version": "1.4.0",
     "revision": 0,
     "sha256": "4de933c58a7ba121c06aba72cf3de7f301cda927f60343fcad6a7f4b0f5f6ae9",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "icu4c@78": {
-    "version": "unknown",
+    "version": "78.3",
     "revision": 0,
     "sha256": "38dc03623f21d6236c47a0148750a808a6c22a4c0b701f567545d83a03f2c247",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "llhttp": {
-    "version": "unknown",
+    "version": "9.4.3",
     "revision": 0,
     "sha256": "c350783b1d18a450727e6288d2ce055559e77a1e6dcd03bb9ab5a03d46fdb150",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "merve": {
-    "version": "unknown",
+    "version": "1.2.2",
     "revision": 4,
     "sha256": "3be82be474a0353b54cb32962b274649f97ad7aa97319a9e7b7610133f9437d3",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "nbytes": {
-    "version": "unknown",
+    "version": "0.1.4",
     "revision": 0,
     "sha256": "4a9bcd2f22e7eb248a0f13666abddea849eda49241b2e10c91c2cdc692d7ff3d",
     "last_updated": "2026-10-23T05:12:13Z",
@@ -214,14 +214,14 @@
     "is_dependency": true
   },
   "ca-certificates": {
-    "version": "unknown",
+    "version": "2026-10-20",
     "revision": 0,
     "sha256": "9ab7357a196f81debab6271c9267e8dbb78834feb84816dea9c191b91c423ac3",
     "last_updated": "2026-10-23T05:12:13Z",
     "is_dependency": true
   },
   "simdjson": {
-    "version": "unknown",
+    "version": "5.0.5",
     "revision": 0,
     "sha256": "d4bd4ee0522f3c7e64ba19039e35c75483ec45bcbaab8d136cf7fe797cff2dbd",
     "last_updated": "2026-10-23T05:12:13Z",
@@ -235,21 +235,21 @@
     "is_dependency": true
   },
   "uvwasi": {
-    "version": "unknown",
+    "version": "0.0.23",
     "revision": 0,
     "sha256": "ad17d9ee22f148c760b83cfe46788e8ba18a185d18cffaab231a989749e69adf",
     "last_updated": "2026-10-23T05:12:14Z",
     "is_dependency": true
   },
   "zstd": {
-    "version": "unknown",
+    "version": "1.5.7",
     "revision": 1,
     "sha256": "80ef9465bf7455cbb3a7bd539b816ab8b8f774f6ec4af3610ada55e8a310e59c",
     "last_updated": "2026-10-23T13:45:13Z",
     "is_dependency": true
   },
   "lz4": {
-    "version": "unknown",
+    "version": "1.10.0",
     "revision": 0,
     "sha256": "ed3d466b6f493833c87856c85dfbedc4487216f78e41f0db6faff3a3dbb439a0",
     "last_updated": "2026-10-23T13:45:13Z",
@@ -270,14 +270,14 @@
     "is_dependency": true
   },
   "libuv": {
-    "version": "v1.53.0\n0.5.2",
+    "version": "1.53.0",
     "revision": 0,
     "sha256": "ce98fd5a27fe5e0d9114f0d31507c6735a5784974b4aa0f5a6fa59bece96bf84",
     "last_updated": "2026-10-23T05:12:14Z",
     "is_dependency": true
   },
   "z3": {
-    "version": "12",
+    "version": "5.3.1",
     "revision": 0,
     "sha256": "7fa080c800e9dc84fb382a5185714d569cca941e0fdf31a13e01fa6d31d1beae",
     "last_updated": "2026-10-23T13:45:13Z",
@@ -352,21 +352,21 @@
     "is_dependency": true
   },
   "glib": {
-    "version": "2.90.1\n1.86.0",
+    "version": "2.90.1",
     "revision": 0,
     "sha256": "e6c6094ef287cd9dd51af16a4e69cb899b732cdf92da900eb9371339099df005",
     "last_updated": "2026-11-19T11:04:53Z",
     "is_dependency": true
   },
   "graphite2": {
-    "version": "unknown",
+    "version": "1.3.15",
     "revision": 0,
     "sha256": "03675be4528ba906d483d7e5ccc189a77ded3a6f6016b2037bc65c55de50ea12",
     "last_updated": "2026-11-19T11:04:53Z",
     "is_dependency": true
   },
   "icu4c@79": {
-    "version": "unknown",
+    "version": "79.1",
     "revision": 0,
     "sha256": "501b5029e184ab296555618fb394762996c08090b0ad1a44f675d97abf38afa1",
     "last_updated": "2026-11-19T11:04:53Z",
