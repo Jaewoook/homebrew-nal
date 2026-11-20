@@ -9,7 +9,8 @@ This guide covers everything required to set up, operate, and maintain the self-
 ### System & Hardware Requirements
 - **Operating System**: macOS 15 (Sequoia) running on native Intel hardware (`x86_64`) or Apple Silicon using Rosetta 2 (`arch -x86_64`).
 - **Disk Space**: At least **20 GB of free disk space** for intermediate build objects when compiling large packages (e.g. LLVM, GCC, Node).
-- **Homebrew Prefix**: Intel Homebrew must be installed under the standard `/usr/local` prefix.
+- **Homebrew Prefix**: Intel Homebrew must be installed under the standard `/usr/local` prefix. On Apple Silicon runners that also have `/opt/homebrew` (`arm64`), `scripts/restore_host_state.sh` automatically preserves and restores `/opt/homebrew` package state around every Intel formula build or Cask mirror job.
+- **Required Host CLI Tools**: `jq`, `python3`, `git`, `curl`, and the GitHub CLI (`gh`, used by `scripts/try_mirror_formula_binary.sh` Fast-Path B for GitHub release inspection). Note that GitHub Actions workflows pass `GITHUB_TOKEN`/`GH_TOKEN` automatically.
 
 ### Installing Intel Homebrew
 If setting up on Apple Silicon or a fresh Intel machine:
@@ -132,30 +133,47 @@ For local maintenance, testing, or manual upstream syncing, use the scripts in `
 # Check upstream versions without making changes (dry-run)
 ./scripts/sync_formulas.sh --dry-run
 
-# Sync specific formula(s) to latest upstream version
+# Sync specific formula(s) to latest Intel-compatible upstream version
+# (automatically falls back to latest Intel @<ver> if unversioned formula is :arm64-only)
 ./scripts/sync_formulas.sh node llvm gcc
 
 # Sync specific versioned formula directly
-./scripts/sync_formulas.sh node@22 llvm@18
+./scripts/sync_formulas.sh node@22 llvm@18 openjdk@25
 
-# Sync formula and automatically discover and fetch missing runtime dependencies
+# Sync formula and automatically resolve missing runtime dependencies and Patches/
 ./scripts/sync_formulas.sh --with-deps node
+
+# Sync specific Cask(s) from homebrew-cask
+./scripts/sync_formulas.sh --casks ghostty
 
 # Register specific formulas explicitly as dependencies
 ./scripts/sync_formulas.sh --as-dependency c-ares libuv
 
-# Fetch missing runtime dependencies for a formula
+# Fetch missing runtime dependencies and referenced Patches/ for a formula
 ./scripts/sync_dependencies.sh node
 
 # Re-qualify tap dependencies across all formulas (or specific target formulas)
 ./scripts/qualify_dependencies.sh
 ./scripts/qualify_dependencies.sh node uvwasi
 
+# Check whether a formula qualifies for Fast-Path A/B binary mirroring (dry-run)
+./scripts/try_mirror_formula_binary.sh jq --dry-run
+
+# Build/mirror a bottle locally (auto-restores /opt/homebrew unless SKIP_HOST_RESTORE=true)
+./scripts/build_bottle.sh xz
+FORCE_SOURCE_BUILD=true ./scripts/build_bottle.sh xz
+
+# Mirror and rewrite a Cask locally
+./scripts/mirror_cask.sh ghostty
+
 # Force sync and commit changes locally
 ./scripts/sync_formulas.sh --force --commit
 
 # Sync, commit, and push directly to main
 ./scripts/sync_formulas.sh --commit --push
+
+# Run the repository test suite
+for t in tests/test_*.sh; do bash "$t"; done
 ```
 
-For technical details on how these scripts resolve dependencies, handle sharding, and deduplicate Homebrew locks, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For technical details on how these scripts resolve dependencies, select Intel-compatible fallbacks, perform binary fast-path mirroring, restore Apple Silicon host state, and deduplicate Homebrew locks, see [ARCHITECTURE.md](ARCHITECTURE.md).

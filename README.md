@@ -77,6 +77,17 @@ brew install jaewoook/nal/python@3.14
 > **Major Version Auto-Preservation**:
 > When an unversioned formula advances its major version upstream (e.g. Node 24 → 26), previous versions are automatically preserved as `<formula>@<prev_version>` (e.g. `node@24`), ensuring your existing workflows continue to install reliably.
 
+> [!NOTE]
+> **Intel (`x86_64`) Compatibility Policy**:
+> When an upstream unversioned formula drops macOS Intel support (`depends_on arch: :arm64`, such as `openjdk` 27+), `homebrew-nal` automatically selects and maintains the latest upstream versioned release that still supports Intel `x86_64` (e.g. `openjdk@25`).
+
+### 4. Install Mirrored Casks
+For macOS Intel (`x86_64`) Casks mirrored in `Casks/`:
+```bash
+brew install --cask jaewoook/nal/<cask>
+```
+Each mirrored Cask is verified to contain `x86_64` binaries (or universal Mach-O slices) and serves assets directly from GitHub Releases.
+
 ---
 
 ## Switching from `homebrew/core`
@@ -105,7 +116,13 @@ No. `homebrew-nal` is a standard Homebrew tap. It operates cleanly inside your e
 <details>
 <summary><b>Q: Why does Homebrew display an Intel x86_64 deprecation warning during installation?</b></summary>
 
-Upstream Homebrew 4.x displays a notice warning that macOS Intel support is Tier 3 and bottles are no longer provided by Homebrew maintainers. This is an informational notice from Homebrew core. `homebrew-nal` exists specifically to provide the bottles that upstream discontinued.
+Recent upstream Homebrew releases display a notice warning that macOS Intel support is Tier 3 and bottles are no longer provided by Homebrew maintainers. This is an informational notice from Homebrew core. `homebrew-nal` exists specifically to provide the bottles and mirrored binaries that upstream discontinued.
+</details>
+
+<details>
+<summary><b>Q: Why is a package only available as a versioned formula (e.g. <code>openjdk@25</code> instead of <code>openjdk</code>)?</b></summary>
+
+When an upstream project drops macOS `x86_64` support in its latest major release (for example, `openjdk` 27+ requires `:arm64`), `homebrew-nal` automatically resolves and maintains the newest upstream versioned formula that still supports Intel Macs (`openjdk@25`).
 </details>
 
 <details>
@@ -126,20 +143,20 @@ You can also run `brew info jaewoook/nal/<formula>` to see the installed bottle 
 flowchart LR
     subgraph Upstream ["1. Upstream Mirroring"]
         direction TB
-        A["Homebrew Core"] -->|"Sync updates\nStrip private DSL"| B["Formula/*.rb"]
+        A["Homebrew Core & Cask"] -->|"Sync updates & Patches/\nIntel x86_64 fallback"| B["Formula/*.rb & Casks/*.rb"]
         B -->|"Rewrite runtime deps\nto jaewoook/nal/*"| C["Commit & Push"]
     end
 
     subgraph Builder ["2. Automated Builder (macOS x86_64)"]
         direction TB
         C -->|"Topological build matrix"| D["Self-Hosted Runner"]
-        D -->|"Prebuild binary bottles"| E["GitHub Releases"]
-        D -->|"Commit bottle block"| F["main branch"]
+        D -->|"Fast-path binary mirror\nor source bottle build"| E["GitHub Releases"]
+        D -->|"Commit bottle/cask URL\nRestore host state"| F["main branch"]
     end
 
     subgraph Client ["3. Intel Mac Client"]
         direction TB
-        E & F -->|"brew install jaewoook/nal/<formula>"| G["Instant Binary Pour\nZero Source Compilation"]
+        E & F -->|"brew install jaewoook/nal/<pkg>"| G["Instant Binary Pour\nZero Source Compilation"]
     end
 
     Upstream --> Builder --> Client
@@ -149,8 +166,8 @@ flowchart LR
 
 ## Project Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Deep dive into the internal design, including dynamic diamond dependency deduplication (`NAL_TAP_DEDUP`), AST dependency qualification, topological sorting, and Homebrew Cellar locking mechanics.
-- **[HOST_SETUP.md](HOST_SETUP.md)**: Guide for setting up the self-hosted macOS Intel builder, configuring GitHub Actions secrets (`SYNC_PAT`), managing runner services, optional bot committer & GPG signing, and running local maintenance scripts.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Deep dive into the internal design, including dynamic diamond dependency deduplication (`NAL_TAP_DEDUP`), AST/block dependency qualification, Intel fallback selection, fast-path binary mirroring, Cask mirroring, host-state restoration, and topological sorting.
+- **[HOST_SETUP.md](HOST_SETUP.md)**: Guide for setting up the self-hosted macOS Intel builder, configuring GitHub Actions secrets (`SYNC_PAT`), managing runner services, optional bot committer & GPG signing, and running local maintenance and test scripts.
 
 ---
 

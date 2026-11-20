@@ -97,20 +97,22 @@ end
 | **Build Dependency** | `depends_on "cmake" => :build` | **No** | Build tools run temporarily during compilation and do not need tap bottle distribution. |
 | **Test Dependency** | `depends_on "pytest" => :test` | **No** | Test harnesses run only during `brew test`. |
 | **Combined Build/Test** | `depends_on "pkgconf" => [:build, :test]` | **No** | Treated as non-runtime; delegates directly to core. |
-| **Linux-Only Blocks** | `on_linux do depends_on "..." end` | **No** | Tap targets macOS Intel (`x86_64`); Linux blocks are stripped or left unqualified. |
+| **Linux / ARM Blocks** | `on_linux do ... end` / `on_arm do ... end` | **No** | Tap targets macOS Intel (`x86_64`); Linux-only and ARM-only dependency blocks are left unqualified and skipped during dependency resolution. |
 
 ---
 
 ## 2. Upstream Synchronization Engine
 
-The upstream sync pipeline runs on a monthly schedule (`sync-upstream.yml`) or on-demand:
+The upstream sync pipeline runs on a monthly schedule (`sync-upstream.yml`) or on-demand (`workflow_dispatch`):
 
 ```mermaid
 flowchart LR
-    Upstream["Homebrew/homebrew-core"] -->|"fetch_upstream_formula"| SyncDeps["sync_dependencies.sh"]
-    SyncDeps -->|"strip on_linux & directives\nresolve sharding"| SaveFormula["Formula/<name>.rb"]
-    SaveFormula -->|"qualify_dependencies.sh"| InjectHook["Inject NAL_TAP_DEDUP\nRewrite depends_on"]
-    InjectHook -->|"sync_formulas.sh"| CommitSync["Git Commit & Push"]
+    Upstream["Homebrew/homebrew-core & cask"] -->|"fetch_upstream_formula\nextract_formula_meta"| SyncFormulas["sync_formulas.sh"]
+    SyncFormulas -->|"arm64-only? pick latest\nIntel @<ver> sibling"| SyncFormulas
+    SyncFormulas -->|"fetch_referenced_patches"| Patches["Patches/<pkg>/*"]
+    SyncFormulas -->|"--with-deps (depth <= 2)"| SyncDeps["sync_dependencies.sh"]
+    SyncDeps -->|"qualify_dependencies.sh"| InjectHook["Inject NAL_TAP_DEDUP\nRewrite depends_on"]
+    InjectHook --> CommitSync["Git Commit & Push"]
 ```
 
 ### Upstream Formula Sharding Resolution
@@ -118,74 +120,102 @@ flowchart LR
 - `Formula/<first-letter>/<name>.rb` (standard)
 - `Formula/lib/<name>.rb` (for `lib*` packages, e.g. `libffi`, `libnghttp2`, `libuv`)
 
-`scripts/sync_dependencies.sh` dynamically probes:
+`fetch_upstream_formula` in [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh) (shared by [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) and [`scripts/sync_dependencies.sh`](scripts/sync_dependencies.sh)) dynamically probes:
 ```bash
-https://raw.githubusercontent.com/Homebrew/homebrew-core/HEAD/Formula/lib/${dep}.rb
-https://raw.githubusercontent.com/Homebrew/homebrew-core/HEAD/Formula/${first_char}/${dep}.rb
-https://raw.githubusercontent.com/Homebrew/homebrew-core/HEAD/Formula/${dep}.rb
+https://raw.githubusercontent.com/Homebrew/homebrew-core/master/Formula/lib/${dep}.rb
+https://raw.githubusercontent.com/Homebrew/homebrew-core/master/Formula/${first_char}/${dep}.rb
+https://raw.githubusercontent.com/Homebrew/homebrew-core/master/Formula/${dep}.rb
 ```
-Formulas are saved into the tap's flat `Formula/<name>.rb` structure.
+Formulas are sanitized (stripping `no_autobump!`) and saved into the tap's flat `Formula/<name>.rb` structure.
 
-### Automated Major Version Preservation
-When an unversioned formula advances its major version (e.g. `node` 24 → 26):
-1. `sync_formulas.sh` compares the new major version against `.formula-versions.json`.
-2. The previous major version formula (`Formula/<name>@<prev_version>.rb`) is retrieved and added to the tap.
-3. This ensures client workflows targeting `@<major>` continue to resolve while the latest unversioned formula advances.
+### Intel (`x86_64`) Compatibility Policy & Versioned Fallback
+When upstream drops Intel macOS support for an unversioned formula (`depends_on arch: :arm64` outside `on_linux`/`on_arm` blocks and with no `on_intel` alternative):
+1. `extract_formula_meta` in [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh) flags the formula as `arm64_only=true`.
+2. For unversioned formulas (e.g. `openjdk`), `list_versioned_candidates` discovers upstream `<formula>@<ver>` siblings via the Homebrew Formulae API (`versioned_formulae`), local directories (`file://` test upstreams), or the GitHub Contents API, sorted newest-first by numeric version tuple.
+3. [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) selects the newest sibling that supports Intel `x86_64` (e.g. `openjdk@25`), syncs it as `Formula/<formula>@<ver>.rb`, and tracks it in `.formula-versions.json`.
+4. If an explicitly versioned formula (`<formula>@<ver>`) is `:arm64`-only or no Intel-compatible variant exists, it is skipped cleanly without committing an unbuildable formula.
+
+### Formula Metadata Extraction & Patch Synchronization
+- **Block-Scoped Version Parsing (`extract_formula_meta`)**: Parses `version`, `revision`, and `url` only at the formula/class/`stable` level, ignoring `head`, `bottle`, `livecheck`, `resource`, `fails_with`, `patch`, `test`, `on_linux`, `on_arm`, `caveats`, `service`, and `def` blocks. Supports `.tar.*`, `.tgz`, `.tbz2`, `.txz`, `.zip`, `.pem`, `-sources`, tag paths, and git `tag:` URLs, preventing nested directives (such as `fails_with :gcc do version "11"`) or `"unknown"` entries from poisoning `.formula-versions.json`.
+- **Referenced Patch Downloads (`fetch_referenced_patches`)**: Both [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) and [`scripts/sync_dependencies.sh`](scripts/sync_dependencies.sh) scan outside `on_linux`/`on_arm` blocks and comments for `Patches/<pkg>/<file>` references, validate paths against traversal outside `Patches/`, download atomically via temporary files, fail fast on download errors, and stage `Patches/` in both formula and dependency registration commits.
+- **Diamond Dependency Visited-Depth Tracking**: [`scripts/sync_dependencies.sh`](scripts/sync_dependencies.sh) resolves runtime dependencies up to `MAX_DEPTH=2`, tracks minimum visited depth per dependency in a Bash 3.2-compatible temp index so diamond dependencies are not re-processed, and preserves valid existing entries in `.formula-versions.json`.
+
+### Automated Major Version Preservation & Cask Sync
+- **Major Version Auto-Preservation**: When an unversioned formula advances its major (or `major.minor`) version (e.g. `node` 24 → 26), [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) retrieves the previous Intel-compatible `<formula>@<prev_version>.rb` sibling (along with any referenced `Patches/`), qualifies its tap dependencies, and records it with `is_versioned: true` in `.formula-versions.json`.
+- **Cask Synchronization**: [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) syncs Casks via `--casks` (or, on scheduled runs, the union of `.cask-versions.json` keys and `Casks/*.rb` filenames) from `Homebrew/homebrew-cask`, recording versions and SHA256 digests in `.cask-versions.json`.
 
 ---
 
-## 3. CI/CD Build & Bottle Pipeline
+## 3. CI/CD Build, Mirror & Release Pipeline
 
-The bottle build workflow (`build.yml`) operates across two matrix tiers:
+The bottle and Cask pipeline (`build.yml`) runs across three stages:
 
 ```mermaid
 flowchart TD
     Push["Git Push / Workflow Dispatch"] --> Detect["detect_formulas.sh"]
-    Detect -->|"Skip already-bottled\nTopological sort"| Matrix["Build Matrix (Runner)"]
-    
+    Detect -->|"Formulas (topological)"| BuildMatrix["Build Bottle Matrix (Runner)"]
+    Detect -->|"Casks"| CaskMatrix["Mirror Cask Matrix (Runner)"]
+
     subgraph BuildJob ["Per-Formula Build Job"]
-        Matrix --> InstallDeps["Install only-dependencies"]
-        InstallDeps --> BuildBottle["brew bottle --root-url"]
-        BuildBottle --> CommitBlock["1. Commit bottle block (NAL Bot)"]
-        CommitBlock --> UploadAsset["2. Upload asset to GitHub Release"]
+        BuildMatrix --> ArchCheck["ArchRequirement Preflight"]
+        ArchCheck --> FastPath{"try_mirror_formula_binary.sh"}
+        FastPath -->|"GHCR x86_64/all or\nGitHub Release binary"| CommitFormula["Commit Bottle & Release"]
+        FastPath -->|"Needs source build"| SourceBuild["Install deps & brew install --build-from-source\nbrew bottle --root-url"]
+        SourceBuild --> CommitFormula
+        CommitFormula --> RestoreFormula["always(): restore_host_state.sh"]
+    end
+
+    subgraph CaskJob ["Per-Cask Mirror Job"]
+        CaskMatrix --> MirrorCask["mirror_cask.sh\nVerify x86_64 & rewrite URL"]
+        MirrorCask --> CommitCask["commit_cask.sh [skip ci]\n& Upload Release"]
+        CommitCask --> RestoreCask["always(): restore_host_state.sh"]
     end
 ```
 
-### Incremental Build Detection & Rebuild Skipping
-On `push` events, `scripts/detect_formulas.sh` inspects whether a formula already has an existing `root_url` block matching `https://github.com/Jaewoook/homebrew-nal/releases/download/<tag>`.
-- If the bottle block exists and no custom patch files in `Patches/<formula>/` were modified, the formula is **skipped**.
-- This prevents redundant multi-hour rebuilds of massive packages (like `llvm`, `gcc`, or `node`) when only tap dependencies, scripts, or unrelated formulas are updated.
+### Detection, Rebuild Skipping & Topological Sort
+- **Incremental Build Detection (`detect_formulas.sh`)**: On `push` events, inspects changed `Formula/*.rb`, `Patches/<name>/*`, and `Casks/*.rb`. Already-bottled formulas (matching `root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/...`) are skipped unless a file under literal prefix `Patches/<name>/` was modified; already-mirrored Casks are likewise skipped.
+- **Topological Dependency Sort**: Parses `depends_on` declarations among queued formulas and sorts them via recursive DFS post-order so dependencies build and publish their bottles before dependents (`max-parallel: 1`).
 
-### Topological Dependency Sort
-If multiple unbottled formulas are queued in the same push:
-1. `detect_formulas.sh` parses `depends_on "jaewoook/nal/<dep>"` declarations.
-2. Formulas are sorted in topological order using Kahn's algorithm so dependencies (e.g. `libuv`, `icu4c@78`) build and publish their bottles before dependents (`node`).
+### Architecture Preflight & Fast-Path Binary Mirroring
+1. **Architecture Preflight ([`scripts/build_bottle.sh`](scripts/build_bottle.sh))**: Evaluates `ArchRequirement` on `jaewoook/nal/<formula>` immediately after resolving the version so any `:arm64`-only formula fails fast before installing dependencies.
+2. **Fast-Path A — Upstream GHCR Bottle Mirroring ([`scripts/try_mirror_formula_binary.sh`](scripts/try_mirror_formula_binary.sh))**: Eligible when a formula has no `jaewoook/nal/*` tap dependencies and no custom `patch`/`Patches/<name>` (and `FORCE_SOURCE_BUILD != true`). Queries `formulae.brew.sh/api/formula/<name>.json` for the matching version/revision, selects an upstream bottle tag by priority (`x86_64_<host>`/`<host>` → older backward-compatible macOS generations → `all` → newer generations), downloads from `ghcr.io`, verifies SHA256, and rewrites the `bottle do` block to point to GitHub Releases.
+3. **Fast-Path B — Standalone GitHub Release Binary Repackaging**: When no upstream GHCR bottle exists and the formula has no macOS runtime dependencies (ignoring `:build`, `:test`, `[:build, :test]`, `:macos`, `:xcode`, and `on_linux`/`on_arm` blocks), checks the upstream GitHub release for macOS `x86_64`/`amd64`/`x64`/`universal` archives, verifies Mach-O `x86_64` executables via `file` and `lipo`, stages them into `/usr/local/Cellar` with a `Tab` receipt, and packages a bottle via `brew bottle`.
+4. **Source Build Fallback & Keg Adoption**: Installs dependencies via `--only-dependencies`, adopts a matching Cellar keg if already built (otherwise compiles via `--build-from-source --skip-post-install --skip-link`), marks `built_as_bottle = true`, runs `brew bottle --root-url`, and normalizes double-hyphen tarball filenames (`<name>--` → `<name>-`).
+5. **`HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK="1"`**: Prevents Homebrew from failing builds due to unrelated deprecated core formulas or Tier 3 warnings on the runner host.
 
-### Keg Adoption & Suppressing Deprecation Checks
-- **Existing Keg Adoption**: If a matching version is already installed in `/usr/local/Cellar`, the build script packages the existing keg directly via `brew bottle`, bypassing source recompilation.
-- **`HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK="1"`**: Homebrew normally runs linkage and dependency health checks on all installed kegs. On Intel macOS Sequoia, this would fail due to deprecated upstream bottles or unrelated core formulas. Setting this variable restricts checks to the active formula.
+### Cask Mirroring & Verification
+[`scripts/mirror_cask.sh`](scripts/mirror_cask.sh) validates that a Cask does not require `:arm64` without an `on_intel` block, extracts Intel `version`/`url`/`sha256` (using indentation-anchored `on_intel`/`on_arm` matching), downloads and verifies SHA256, inspects extracted `.zip`/tarball or mounted `.dmg` (`hdiutil` + `lipo`) contents for Mach-O `x86_64` slices, and rewrites `Casks/<name>.rb` (stripping upstream `url` kwargs such as `verified:`) to point to tag `cask-<name>.<version>`. [`scripts/commit_cask.sh`](scripts/commit_cask.sh) commits with `[skip ci]` in the commit body to avoid re-triggering `build.yml`.
+
+### Host State Preservation & Restoration
+On Apple Silicon build hosts that maintain both `/opt/homebrew` (`arm64`) and `/usr/local` (Rosetta `x86_64`), [`scripts/restore_host_state.sh`](scripts/restore_host_state.sh) records pre-job `/opt/homebrew` install state (`record-state`) and runs on `if: always()` (`restore`) to uninstall the temporary `/usr/local` build, run `brew autoremove`, and reinstall or remove the package in `/opt/homebrew` so the host remains clean.
 
 ---
 
 ## 4. Runner Security & Committer Lifecycle
 
-Self-hosted runners build formulas and commit updated bottle blocks back to the repository.
+Self-hosted runners build formulas/casks and push bottle/cask updates back to `main`.
 
 ### Ephemeral Bot Git Identity & Optional Signing
-To avoid committing with the runner's personal system identity or leaving automated bot credentials globally configured:
-1. Runner scripts record previous `user.name`, `user.email`, `user.signingkey`, and `commit.gpgsign` settings.
-2. The runner configures an isolated commit identity (`BOT_NAME` and `BOT_EMAIL`, defaulting to `NAL Bot <nal-git-system@jaewook.me>`).
-3. **Optional GPG Signing**: If a GPG key ID is provided via `BOT_GPG_KEY` and exists in the host's keyring, `commit.gpgsign = true` is applied; otherwise, commits proceed unsigned without blocking the build.
-4. A Bash `trap` ensures that when the job exits (on success, error, or cancellation), all git settings are restored to their previous states.
+To avoid committing with the runner's personal system identity or leaving automated bot credentials in `.git/config`:
+1. [`scripts/commit_bottle.sh`](scripts/commit_bottle.sh) and [`scripts/commit_cask.sh`](scripts/commit_cask.sh) record existing local `user.name`, `user.email`, `user.signingkey`, and `commit.gpgsign` settings.
+2. Commits pass `-c` overrides using `BOT_NAME` / `BOT_EMAIL` (defaulting to `NAL Bot <nal-git-system@jaewook.me>`).
+3. **Optional GPG Signing**: If `BOT_GPG_KEY` is set and present in the host's GPG keyring, `-c commit.gpgsign=true` is applied; otherwise commits proceed unsigned without blocking the build.
+4. A Bash `trap` on `EXIT INT TERM` restores all local git settings, and `build.yml` unsets runner-local git identity config in its `always()` cleanup step.
 
 ---
 
 ## 5. Summary Matrix of Tap Scripts
 
-| Script | Responsibility | Key Flags / Arguments |
+| Script | Responsibility | Key Flags / Environment Variables |
 | :--- | :--- | :--- |
-| [`scripts/detect_formulas.sh`](file:///Users/jaewookahn/repos/homebrew-nal/scripts/detect_formulas.sh) | Identifies formulas needing builds, applies bottle skip logic, and sorts topologically. | `--event <event_name>` |
-| [`scripts/sync_formulas.sh`](file:///Users/jaewookahn/repos/homebrew-nal/scripts/sync_formulas.sh) | Synchronizes formulas from upstream, sanitizes DSL, and updates `.formula-versions.json`. | `[formulas...]`, `--with-deps`, `--dry-run`, `--commit` |
-| [`scripts/sync_dependencies.sh`](file:///Users/jaewookahn/repos/homebrew-nal/scripts/sync_dependencies.sh) | Discovers and fetches upstream runtime dependencies, resolving sharded paths. | `[formulas...]` |
-| [`scripts/qualify_dependencies.sh`](file:///Users/jaewookahn/repos/homebrew-nal/scripts/qualify_dependencies.sh) | Rewrites runtime dependencies to tap namespace and injects the `NAL_TAP_DEDUP` hook. | `[formulas...]` |
-| [`scripts/build_bottle.sh`](file:///Users/jaewookahn/repos/homebrew-nal/scripts/build_bottle.sh) | Handles dependency installation, compilation, bottle packaging, and bottle block generation. | `<formula>` |
+| [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh) | Shared upstream formula fetching, `versioned_formulae` discovery, block-scoped metadata/arch parsing, SHA256, and atomic `Patches/` downloads. | Sourced by `sync_formulas.sh` and `sync_dependencies.sh` |
+| [`scripts/detect_formulas.sh`](scripts/detect_formulas.sh) | Identifies formulas/casks needing build or mirroring, skips already-published artifacts unless `Patches/<name>/` changed, and sorts formulas topologically. | `FORMULA_INPUT`, `CASK_INPUT`, `EVENT_NAME`, `EVENT_BEFORE`, `GITHUB_OUTPUT` |
+| [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) | Syncs formulas and casks from upstream, selects latest Intel-compatible fallback for `:arm64`-only formulas, preserves major versions, downloads `Patches/`, and updates state JSON. | `[formulas...]`, `--casks`, `--with-deps`, `--force`, `--dry-run`, `--commit`, `--push`, `--no-gpg-sign`, `--no-preserve` |
+| [`scripts/sync_dependencies.sh`](scripts/sync_dependencies.sh) | Recursively resolves runtime dependencies (depth ≤ 2), fetches missing formulas and `Patches/`, repairs missing/corrupt state entries, and triggers qualification. | `--formula-dir`, `--patches-dir`, `--state-file`, `--upstream-base`, `--upstream-api-base`, `--max-depth` |
+| [`scripts/qualify_dependencies.sh`](scripts/qualify_dependencies.sh) | Rewrites non-Linux/non-ARM runtime `depends_on` references to `jaewoook/nal/*` and injects the `NAL_TAP_DEDUP` runtime hook. | `--formula-dir`, `--tap`, `[formulas...]` |
+| [`scripts/build_bottle.sh`](scripts/build_bottle.sh) | Runs `ArchRequirement` preflight, attempts fast-path binary mirroring, builds/bottles from source under `x86_64`, and normalizes bottle filenames. | `<formula>`, `FORCE_SOURCE_BUILD`, `SKIP_HOST_RESTORE` |
+| [`scripts/try_mirror_formula_binary.sh`](scripts/try_mirror_formula_binary.sh) | Mirrors upstream GHCR `x86_64`/`all` bottles (Fast-Path A) or repackages standalone GitHub Release macOS `x86_64` binaries (Fast-Path B). | `<formula> [--dry-run] [<version>]` |
+| [`scripts/commit_bottle.sh`](scripts/commit_bottle.sh) | Commits updated bottle blocks (`[skip ci]`), rebases, and pushes to `main` with ephemeral bot identity and optional GPG signing. | `<formula>`, `BOT_NAME`, `BOT_EMAIL`, `BOT_GPG_KEY` |
+| [`scripts/mirror_cask.sh`](scripts/mirror_cask.sh) | Validates Intel `x86_64` support, verifies SHA256 and Mach-O slices, and rewrites Cask URLs/checksums to GitHub Releases. | `<cask>`, `SKIP_ARCH_BINARY_MOUNT`, `SKIP_HOST_RESTORE` |
+| [`scripts/commit_cask.sh`](scripts/commit_cask.sh) | Commits mirrored Cask definitions (`[skip ci]` in body), rebases, and pushes to `main`. | `<cask> [<version>]`, `BOT_NAME`, `BOT_EMAIL`, `BOT_GPG_KEY` |
+| [`scripts/restore_host_state.sh`](scripts/restore_host_state.sh) | Snapshots `/opt/homebrew` installation state before builds and cleans `/usr/local` while restoring `/opt/homebrew` afterward. | `<record-state\|restore> <formula\|cask> <name>` |
