@@ -47,11 +47,9 @@ class Harfbuzz < Formula
   head "https://github.com/harfbuzz/harfbuzz.git", branch: "main"
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "df90d0a72867ebebc59b4bbae968d7667eb3114bff7759fd2cd26f191caf407d"
-    sha256 cellar: :any, arm64_tahoe:       "dc5fa4caeb130a4c1ef318533049b3c86b49dd5a7c9639a50a658c518cea8d1d"
-    sha256 cellar: :any, arm64_sequoia:     "91c3542c8e6b0e7b1b35af3d24118a0c3f2fd29cef8013e279861ae8f108547d"
-    sha256 cellar: :any, arm64_linux:       "ffbede0c27d334b42fe2e80780a7543bc0fcb993f678b7355a48d0f7bd4db191"
-    sha256 cellar: :any, x86_64_linux:      "8dc972166b3fbf211cbe8f149562f971d21e35471ceea4096b522f9f18fa8e34"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/harfbuzz.15.1.0"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "7e6bf7ac71542d85c2be3d39028500be075f7063648f56d28d87944e9a2b257f"
   end
 
   depends_on "gobject-introspection" => :build
