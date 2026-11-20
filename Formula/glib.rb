@@ -17,9 +17,12 @@ class Glib < Formula
   end
 
   bottle do
-    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/glib.2.90.1"
-    rebuild 2
-    sha256 sequoia: "1a1e4fb5bcf5029c2322bb81bfaa8eaa1fadd106ddb5645714ce8d005781bea9"
+    rebuild 1
+    sha256 arm64_golden_gate: "5ccb7a549258ed35cddc280882a11a854bd0ef1b2329a1ce77e43e39d2d98e3a"
+    sha256 arm64_tahoe:       "56145c606a672f7b69845be6e16e8e6f1611052620e4638237116c177fe15c43"
+    sha256 arm64_sequoia:     "ce9568a335281cb6bd12c48fd89d7a118a046f9df16761c120826fdae116e468"
+    sha256 arm64_linux:       "3ce028927d1d01745efb1b6f83f1469e0bb967b801096a601b223030dfb87279"
+    sha256 x86_64_linux:      "ca0144204f1844125166d69208650c5b12c2fbd68bbd3fa904127c6e4fe8a3b1"
   end
 
   depends_on "bison" => :build # for gobject-introspection

@@ -296,3 +296,25 @@ PY
     fi
   done
 }
+
+# Normalize Homebrew double-hyphen bottle filenames (<formula>--<ver> -> <formula>-<ver>)
+# using Bash 3.2-safe prefix removal, and verify at least one archive exists.
+# Usage: normalize_bottle_archives <formula_name>
+normalize_bottle_archives() {
+  local formula_name="$1"
+  local bottle_prefix="${formula_name}--"
+  local f target_name
+
+  shopt -s nullglob
+  for f in "${formula_name}"--*.tar.gz; do
+    [ -f "$f" ] || continue
+    target_name="${formula_name}-${f#"$bottle_prefix"}"
+    echo "Renaming bottle archive $f -> $target_name"
+    mv -- "$f" "$target_name"
+  done
+
+  if ! compgen -G "${formula_name}-*.tar.gz" >/dev/null; then
+    echo "::error::Normalized bottle archive ${formula_name}-*.tar.gz not found!" >&2
+    return 1
+  fi
+}

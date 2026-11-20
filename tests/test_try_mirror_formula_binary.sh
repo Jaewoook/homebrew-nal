@@ -228,4 +228,27 @@ if ! echo "$OUT_SMALLSTEP" | grep -q "FAST_PATH_B:smallstep/cli:v0.27.2:smallste
   exit 1
 fi
 
+# 5. Test Bash 3.2 (/bin/bash) bottle filename normalization does not insert literal quotes
+NORM_DIR="$TMP_DIR/norm"
+mkdir -p "$NORM_DIR"
+touch "$NORM_DIR/glib--2.90.1.sequoia.bottle.2.tar.gz" "$NORM_DIR/foo--bar--1.0.sequoia.bottle.tar.gz"
+(
+  cd "$NORM_DIR"
+  /bin/bash -euo pipefail -c '
+    source "$1"
+    normalize_bottle_archives glib
+    normalize_bottle_archives foo--bar
+  ' -- "${SCRIPT_DIR}/scripts/formula_helpers.sh"
+)
+if [ ! -f "$NORM_DIR/glib-2.90.1.sequoia.bottle.2.tar.gz" ]; then
+  echo "Assertion failed: glib bottle filename normalization failed under /bin/bash"
+  ls -la "$NORM_DIR"
+  exit 1
+fi
+if [ ! -f "$NORM_DIR/foo--bar-1.0.sequoia.bottle.tar.gz" ]; then
+  echo "Assertion failed: foo--bar bottle filename normalization failed under /bin/bash"
+  ls -la "$NORM_DIR"
+  exit 1
+fi
+
 echo "All try_mirror_formula_binary tests passed!"

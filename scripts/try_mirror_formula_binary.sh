@@ -7,6 +7,10 @@
 # ==============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/formula_helpers.sh
+source "${SCRIPT_DIR}/formula_helpers.sh"
+
 # Ensure execution under Rosetta 2 (x86_64) on Apple Silicon hosts
 if [ "$(uname -m)" = "arm64" ]; then
   exec arch -x86_64 /bin/bash "$0" "$@"
@@ -404,11 +408,7 @@ if /usr/local/bin/brew ruby -e '
   BOTTLE_JSON="${BOTTLE_JSON_FILES[0]:-}"
   if [[ -n "$BOTTLE_JSON" && -f "$BOTTLE_JSON" ]]; then
     /usr/local/bin/brew bottle --merge --write --no-commit "$BOTTLE_JSON"
-    for f in "${FORMULA_NAME}"--*.tar.gz; do
-      [ -f "$f" ] || continue
-      TARGET_NAME="${f/--/-}"
-      mv -- "$f" "$TARGET_NAME"
-    done
+    normalize_bottle_archives "$FORMULA_NAME"
     echo "Successfully packaged prebuilt binary into bottle for $FORMULA_NAME"
     exit 0
   fi

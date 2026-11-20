@@ -111,6 +111,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: "${{ matrix.formula }}-*.tar.gz"
+          fail_on_unmatched_files: true
           tag_name: "${{ env.RELEASE_TAG }}"
           name: "${{ env.RELEASE_TITLE }}"
           target_commitish: "${{ steps.commit.outputs.commit_sha }}"
@@ -175,6 +176,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: "${{ steps.mirror.outputs.cask_file }}"
+          fail_on_unmatched_files: true
           tag_name: "${{ steps.mirror.outputs.release_tag }}"
           name: "${{ steps.mirror.outputs.release_title }}"
           target_commitish: "${{ steps.commit.outputs.commit_sha }}"

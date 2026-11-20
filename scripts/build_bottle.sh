@@ -27,6 +27,9 @@ if [[ ! "$FORMULA_NAME" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/formula_helpers.sh
+source "${SCRIPT_DIR}/formula_helpers.sh"
+
 if [ -z "${GITHUB_ACTIONS:-}" ] && [ "${SKIP_HOST_RESTORE:-false}" != "true" ] && [ -f "${SCRIPT_DIR}/restore_host_state.sh" ]; then
   bash "${SCRIPT_DIR}/restore_host_state.sh" record-state formula "$FORMULA_NAME"
   trap 'bash "${SCRIPT_DIR}/restore_host_state.sh" restore formula "$FORMULA_NAME"' EXIT
@@ -138,9 +141,4 @@ else
 fi
 
 # Normalize bottle archive filename: rename double-hyphen to single-hyphen
-for f in "${FORMULA_NAME}"--*.tar.gz; do
-  [ -f "$f" ] || continue
-  TARGET_NAME="${f/"${FORMULA_NAME}--"/"${FORMULA_NAME}-"}"
-  echo "Renaming bottle archive $f -> $TARGET_NAME"
-  mv -- "$f" "$TARGET_NAME"
-done
+normalize_bottle_archives "$FORMULA_NAME"
