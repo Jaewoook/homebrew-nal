@@ -310,12 +310,6 @@
     "last_updated": "2026-11-19T11:04:54Z",
     "is_dependency": true
   },
-  "openjdk": {
-    "version": "27.0.1.1",
-    "revision": 0,
-    "sha256": "dd7a5484168f8af7f68b68752e9538b89258c5f1e50ce6ff71e80fb04da83ed6",
-    "last_updated": "2026-11-19T11:04:53Z"
-  },
   "freetype": {
     "version": "2.15.0",
     "revision": 0,
@@ -371,5 +365,11 @@
     "sha256": "501b5029e184ab296555618fb394762996c08090b0ad1a44f675d97abf38afa1",
     "last_updated": "2026-11-19T11:04:53Z",
     "is_dependency": true
+  },
+  "openjdk@25": {
+    "version": "25.0.5.1",
+    "revision": 0,
+    "sha256": "ded1879b0b1569edb2fadce5c8717199fab437eda33fd569bf4c40acaab6a70c",
+    "last_updated": "2026-11-20T16:27:02Z"
   }
 }

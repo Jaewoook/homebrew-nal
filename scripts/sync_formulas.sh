@@ -191,21 +191,6 @@ fi
 # Helper Functions
 # ------------------------------------------------------------------------------
 
-# Cross-platform SHA256 checksum (macOS shasum vs Linux sha256sum)
-calc_sha256() {
-  local file="$1"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$file" | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$file" | awk '{print $NF}'
-  else
-    echo "Error: No sha256 utility (sha256sum, shasum, openssl) found!" >&2
-    exit 1
-  fi
-}
-
 # Version comparison using sort -V
 # Returns 0 (true) if upstream is strictly newer than local, 1 (false) otherwise
 is_upstream_newer() {
@@ -324,47 +309,64 @@ for FORMULA in $FORMULAS; do
     continue
   fi
   echo "Checking formula: $FORMULA"
-  LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
 
   # 1. Fetch upstream formula file (.rb)
-  # Homebrew-core shards formulas by first letter (Formula/<letter>/<formula>.rb) or Formula/lib/<formula>.rb
-  FIRST_CHAR=$(printf "%s" "${FORMULA:0:1}" | tr '[:upper:]' '[:lower:]')
-  LIB_URL="${UPSTREAM_RAW_BASE}/Formula/lib/${FORMULA}.rb"
-  SHARDED_URL="${UPSTREAM_RAW_BASE}/Formula/${FIRST_CHAR}/${FORMULA}.rb"
-  ROOT_URL="${UPSTREAM_RAW_BASE}/Formula/${FORMULA}.rb"
-
   TMP_RB=$(mktemp)
   SOURCE_URL=""
-  if [[ "$FORMULA" == lib* ]] && curl -sSfL "$LIB_URL" -o "$TMP_RB" 2>/dev/null; then
-    SOURCE_URL="$LIB_URL"
-  elif curl -sSfL "$SHARDED_URL" -o "$TMP_RB" 2>/dev/null; then
-    SOURCE_URL="$SHARDED_URL"
-  elif curl -sSfL "$ROOT_URL" -o "$TMP_RB" 2>/dev/null; then
-    SOURCE_URL="$ROOT_URL"
-  else
+  if ! SOURCE_URL=$(fetch_upstream_formula "$FORMULA" "$UPSTREAM_RAW_BASE" "$TMP_RB"); then
     echo "  [ERROR] Could not download formula for '$FORMULA' from upstream!"
     rm -f "$TMP_RB"
     continue
   fi
 
-  # Strip directives that are only valid in official Homebrew taps (e.g. no_autobump!)
-  SANITIZED_TMP=$(mktemp)
-  grep -v -E '^[[:space:]]*no_autobump!' "$TMP_RB" > "$SANITIZED_TMP" || true
-  mv "$SANITIZED_TMP" "$TMP_RB"
+  # 2. Fetch upstream metadata from Homebrew API
+  API_URL="${UPSTREAM_API_BASE}/${FORMULA}.json"
+  META_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
 
   UPSTREAM_META=$(extract_formula_meta "$TMP_RB")
   IFS='|' read -r PARSED_UPSTREAM_VER PARSED_UPSTREAM_REV UPSTREAM_ARM64_ONLY <<< "$UPSTREAM_META"
+
   if [[ "$UPSTREAM_ARM64_ONLY" == "true" ]]; then
-    echo "  [SKIP] Formula '$FORMULA' requires :arm64 architecture on macOS and does not support x86_64." >&2
-    rm -f "$TMP_RB"
-    continue
+    if [[ "$FORMULA" == *"@"* ]]; then
+      echo "  [SKIP] Formula '$FORMULA' requires :arm64 architecture on macOS and does not support x86_64." >&2
+      rm -f "$TMP_RB"
+      continue
+    fi
+
+    echo "  [FALLBACK] Formula '$FORMULA' requires :arm64 on macOS; searching for latest Intel-compatible version..."
+    FALLBACK_CANDIDATES=$(list_versioned_candidates "$FORMULA" "$UPSTREAM_RAW_BASE" "$META_JSON")
+    FALLBACK_FORMULA=""
+    FALLBACK_SOURCE_URL=""
+    TMP_FALLBACK=$(mktemp)
+    for CANDIDATE in $FALLBACK_CANDIDATES; do
+      if ! FALLBACK_SOURCE_URL=$(fetch_upstream_formula "$CANDIDATE" "$UPSTREAM_RAW_BASE" "$TMP_FALLBACK"); then
+        continue
+      fi
+      CANDIDATE_META=$(extract_formula_meta "$TMP_FALLBACK")
+      IFS='|' read -r PARSED_UPSTREAM_VER PARSED_UPSTREAM_REV CANDIDATE_ARM64_ONLY <<< "$CANDIDATE_META"
+      if [[ "$CANDIDATE_ARM64_ONLY" != "true" ]]; then
+        FALLBACK_FORMULA="$CANDIDATE"
+        mv "$TMP_FALLBACK" "$TMP_RB"
+        SOURCE_URL="$FALLBACK_SOURCE_URL"
+        break
+      fi
+    done
+    rm -f "$TMP_FALLBACK"
+
+    if [[ -z "$FALLBACK_FORMULA" ]]; then
+      echo "  [SKIP] Formula '$FORMULA' and its versioned variants do not support x86_64 (:arm64 only)." >&2
+      rm -f "$TMP_RB"
+      continue
+    fi
+
+    echo "  [FALLBACK] Selected latest Intel-compatible version: $FALLBACK_FORMULA"
+    FORMULA="$FALLBACK_FORMULA"
+    API_URL="${UPSTREAM_API_BASE}/${FORMULA}.json"
+    META_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
   fi
 
+  LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
   UPSTREAM_SHA=$(calc_sha256 "$TMP_RB")
-
-  # 2. Fetch upstream version & revision from Homebrew API
-  API_URL="${UPSTREAM_API_BASE}/${FORMULA}.json"
-  META_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
 
   UPSTREAM_VER=""
   UPSTREAM_REV=0
@@ -377,6 +379,11 @@ for FORMULA in $FORMULAS; do
   if [[ -z "$UPSTREAM_VER" ]]; then
     UPSTREAM_VER="${PARSED_UPSTREAM_VER}"
     UPSTREAM_REV="${PARSED_UPSTREAM_REV:-0}"
+  fi
+  if [[ -z "$UPSTREAM_VER" ]]; then
+    echo "  [ERROR] Could not resolve upstream version for '$FORMULA', skipping!" >&2
+    rm -f "$TMP_RB"
+    continue
   fi
 
   # 3. Retrieve local version & revision
@@ -467,24 +474,8 @@ for FORMULA in $FORMULAS; do
         continue
       fi
 
-      CANDIDATE_CHAR=$(printf "%s" "${CANDIDATE:0:1}" | tr '[:upper:]' '[:lower:]')
-      CANDIDATE_LIB="${UPSTREAM_RAW_BASE}/Formula/lib/${CANDIDATE}.rb"
-      CANDIDATE_SHARDED="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE_CHAR}/${CANDIDATE}.rb"
-      CANDIDATE_ROOT="${UPSTREAM_RAW_BASE}/Formula/${CANDIDATE}.rb"
-
-      TMP_CANDIDATE=$(mktemp)
-      CANDIDATE_FOUND=false
-      if [[ "$CANDIDATE" == lib* ]] && curl -sSfL "$CANDIDATE_LIB" -o "$TMP_CANDIDATE" 2>/dev/null; then
-        CANDIDATE_FOUND=true
-      elif curl -sSfL "$CANDIDATE_SHARDED" -o "$TMP_CANDIDATE" 2>/dev/null || curl -sSfL "$CANDIDATE_ROOT" -o "$TMP_CANDIDATE" 2>/dev/null; then
-        CANDIDATE_FOUND=true
-      fi
-
-      if [[ "$CANDIDATE_FOUND" == "true" ]]; then
-        SANITIZED_CANDIDATE=$(mktemp)
-        grep -v -E '^[[:space:]]*no_autobump!' "$TMP_CANDIDATE" > "$SANITIZED_CANDIDATE" || true
-        rm -f "$TMP_CANDIDATE"
-
+      SANITIZED_CANDIDATE=$(mktemp)
+      if fetch_upstream_formula "$CANDIDATE" "$UPSTREAM_RAW_BASE" "$SANITIZED_CANDIDATE" >/dev/null; then
         CANDIDATE_META=$(extract_formula_meta "$SANITIZED_CANDIDATE")
         IFS='|' read -r CANDIDATE_VER CANDIDATE_REV CANDIDATE_ARM64_ONLY <<< "$CANDIDATE_META"
         if [[ "$CANDIDATE_ARM64_ONLY" == "true" ]]; then
@@ -521,7 +512,7 @@ for FORMULA in $FORMULAS; do
         PRESERVED_CANDIDATE_PATH="$CANDIDATE_PATH"
         break
       else
-        rm -f "$TMP_CANDIDATE"
+        rm -f "$SANITIZED_CANDIDATE"
       fi
     done
   fi

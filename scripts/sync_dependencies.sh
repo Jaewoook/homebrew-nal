@@ -90,48 +90,6 @@ if [ ! -f "$STATE_FILE" ]; then
   echo "{}" > "$STATE_FILE"
 fi
 
-calc_sha256() {
-  local file="$1"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$file" | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$file" | awk '{print $NF}'
-  fi
-}
-
-fetch_upstream_formula() {
-  local dep="$1"
-  local dest="$2"
-
-  local first_char
-  first_char=$(printf "%s" "${dep:0:1}" | tr '[:upper:]' '[:lower:]')
-  local lib_url="${UPSTREAM_BASE}/Formula/lib/${dep}.rb"
-  local sharded_url="${UPSTREAM_BASE}/Formula/${first_char}/${dep}.rb"
-  local root_url="${UPSTREAM_BASE}/Formula/${dep}.rb"
-
-  local tmp
-  tmp=$(mktemp)
-
-  local fetched=false
-  if [[ "$dep" == lib* ]] && curl -sSfL "$lib_url" -o "$tmp" 2>/dev/null; then
-    fetched=true
-  elif curl -sSfL "$sharded_url" -o "$tmp" 2>/dev/null || curl -sSfL "$root_url" -o "$tmp" 2>/dev/null; then
-    fetched=true
-  fi
-
-  if [ "$fetched" = true ]; then
-    # Sanitize directives not permitted in custom taps
-    grep -v -E '^[[:space:]]*no_autobump!' "$tmp" > "$dest" || true
-    rm -f "$tmp"
-    return 0
-  else
-    rm -f "$tmp"
-    return 1
-  fi
-}
-
 extract_runtime_deps() {
   local rb_file="$1"
   [ -f "$rb_file" ] || return 0
@@ -195,7 +153,7 @@ register_dependency() {
 
   if [ ! -f "$target_path" ]; then
     echo "  [DEP] Fetching missing dependency formula: $dep"
-    if fetch_upstream_formula "$dep" "$target_path"; then
+    if fetch_upstream_formula "$dep" "$UPSTREAM_BASE" "$target_path" >/dev/null; then
       is_new=1
     else
       echo "  [WARN] Could not fetch formula for dependency '$dep' from upstream!" >&2

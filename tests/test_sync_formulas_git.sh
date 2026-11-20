@@ -140,6 +140,58 @@ if [ -f Formula/armtool.rb ]; then
   exit 1
 fi
 
+# 5b. Verify arm64-only unversioned formula falls back to latest Intel-compatible versioned sibling
+mkdir -p "$TMP_DIR/mock_upstream/Formula/j"
+cat <<'EOF' > "$TMP_DIR/mock_upstream/Formula/j/jdkdemo.rb"
+class Jdkdemo < Formula
+  desc "JDK 27 arm64 only"
+  url "https://example.com/jdkdemo-27.0.0.tar.gz"
+  on_macos do
+    depends_on arch: :arm64
+  end
+end
+EOF
+cat <<'EOF' > "$TMP_DIR/mock_upstream/Formula/j/jdkdemo@26.rb"
+class JdkdemoAT26 < Formula
+  desc "JDK 26 also arm64 only"
+  url "https://example.com/jdkdemo-26.0.0.tar.gz"
+  on_macos do
+    depends_on arch: :arm64
+  end
+end
+EOF
+cat <<'EOF' > "$TMP_DIR/mock_upstream/Formula/j/jdkdemo@25.rb"
+class JdkdemoAT25 < Formula
+  desc "JDK 25 Intel compatible"
+  url "https://example.com/jdkdemo-25.0.5.tar.gz"
+end
+EOF
+cat <<'EOF' > "$TMP_DIR/mock_upstream/Formula/j/jdkdemo@21.rb"
+class JdkdemoAT21 < Formula
+  desc "JDK 21 older Intel compatible"
+  url "https://example.com/jdkdemo-21.0.9.tar.gz"
+end
+EOF
+
+UPSTREAM_RAW_BASE="file://${TMP_DIR}/mock_upstream" \
+UPSTREAM_API_BASE="file://${TMP_DIR}/mock_upstream/api" \
+bash "$SYNC_SCRIPT" --commit --no-gpg-sign jdkdemo
+
+if [ -f Formula/jdkdemo.rb ] || [ -f "Formula/jdkdemo@26.rb" ] || [ -f "Formula/jdkdemo@21.rb" ]; then
+  echo "Assertion failed: unexpected jdkdemo variant synced"
+  ls -la Formula/
+  exit 1
+fi
+if [ ! -f "Formula/jdkdemo@25.rb" ]; then
+  echo "Assertion failed: expected latest Intel-compatible fallback Formula/jdkdemo@25.rb"
+  exit 1
+fi
+JDK25_VER=$(jq -r '.["jdkdemo@25"].version // empty' .formula-versions.json)
+if [ "$JDK25_VER" != "25.0.5" ]; then
+  echo "Assertion failed: expected jdkdemo@25 version 25.0.5 in state, got '$JDK25_VER'"
+  exit 1
+fi
+
 # 6. Verify --with-deps commits dependency formula AND its referenced Patches/ file
 mkdir -p "$TMP_DIR/mock_upstream/Formula/w" "$TMP_DIR/mock_upstream/Formula/d" "$TMP_DIR/mock_upstream/Patches/depwithpatch"
 echo "dep-patch-bytes" > "$TMP_DIR/mock_upstream/Patches/depwithpatch/fix.diff"
