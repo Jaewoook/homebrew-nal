@@ -10,27 +10,52 @@ unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
   end)
 
   begin
+    require "tab"
+    Tab.singleton_class.prepend(Module.new do
+      def for_keg(keg)
+        tab = super
+        remaps = Thread.current[:nal_tap_remaps]
+        if remaps && !remaps.empty?
+          keg_path = keg.to_s.chomp("/")
+          real_keg = begin
+            File.realpath(keg_path)
+          rescue SystemCallError
+            keg_path
+          end
+          target_tap = remaps[File.dirname(keg_path)] || remaps[File.dirname(real_keg)]
+          if target_tap && tab&.source.is_a?(Hash) && tab.source["tap"] == "homebrew/core"
+            remapped = tab.dup
+            remapped.source = tab.source.merge("tap" => target_tap.to_s)
+            remapped.tap = target_tap if remapped.respond_to?(:tap=)
+            tab = remapped
+          end
+        end
+        tab
+      end
+    end)
+
     require "formula_installer"
     FormulaInstaller.prepend(Module.new do
       def install_dependency(dep, dep_formula = dep.to_formula)
         if dep_formula.tap&.to_s == "jaewoook/nal"
-          keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
-          keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
-          keg_paths.uniq.each do |keg_path|
-            next unless keg_path&.directory?
-
-            target = keg_path.symlink? ? Utils::Path.resolved_path(keg_path) : keg_path
-            begin
-              keg = Keg.new(target)
-              if keg.tab&.source.is_a?(Hash) && keg.tab.source["tap"] == "homebrew/core"
-                keg.tab.source["tap"] = dep_formula.tap.to_s
-                keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
-              end
-            rescue RuntimeError, SystemCallError, TypeError
-            end
+          prev_remaps = Thread.current[:nal_tap_remaps] || {}
+          rack_str = dep_formula.rack.to_s.chomp("/")
+          rack_keys = [rack_str]
+          begin
+            rack_keys << File.realpath(rack_str)
+          rescue SystemCallError
           end
+          remaps = prev_remaps.dup
+          rack_keys.uniq.each { |k| remaps[k] = dep_formula.tap }
+          Thread.current[:nal_tap_remaps] = remaps
+          begin
+            super
+          ensure
+            Thread.current[:nal_tap_remaps] = prev_remaps
+          end
+        else
+          super
         end
-        super
       end
     end)
   rescue LoadError
