@@ -110,6 +110,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -b|--branch)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a branch name" >&2; exit 1; }
       GIT_BRANCH="$2"
       shift 2
       ;;
@@ -213,14 +214,34 @@ is_upstream_newer() {
     fi
   fi
 
-  # Compare versions using sort -V (version sort)
-  local newest
-  newest=$(printf "%s\n%s\n" "$v_loc" "$v_up" | sort -V | tail -n 1)
-  if [[ "$newest" == "$v_up" ]]; then
-    return 0
-  else
-    return 1
-  fi
+  # Compare versions accurately (pre-release suffixes like -rc1sort before final 1.0.0)
+  python3 - "$v_up" "$r_up" "$v_loc" "$r_loc" <<'PY'
+import re, sys
+
+v_up, r_up, v_loc, r_loc = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+PRE_RANK = {"dev": 0, "a": 1, "alpha": 1, "b": 2, "beta": 2, "pre": 3, "preview": 3, "rc": 4}
+PRE_RE = re.compile(r'[-_.](dev|alpha|beta|preview|pre|rc|a|b)(?:[-_.]?(\d+))?$', re.IGNORECASE)
+
+def ver_key(v):
+    m = PRE_RE.search(v)
+    if m:
+        main = v[:m.start()]
+        tag = PRE_RANK.get(m.group(1).lower(), 0)
+        num = int(m.group(2)) if m.group(2) else 0
+        pre = (0, tag, num)
+    else:
+        main = v
+        pre = (1, 0, 0)
+    tokens = []
+    for tok in re.findall(r'\d+|[a-zA-Z]+', main):
+        if tok.isdigit():
+            tokens.append((1, int(tok), ""))
+        else:
+            tokens.append((0, 0, tok.lower()))
+    return (tokens, pre)
+
+sys.exit(0 if (ver_key(v_up), r_up) > (ver_key(v_loc), r_loc) else 1)
+PY
 }
 
 # Centralized Git commit and push helpers
@@ -304,7 +325,7 @@ UPDATED_CASKS_LIST=()
 for FORMULA in $FORMULAS; do
   PRESERVED_CANDIDATE_PATH=""
   echo ""
-  if [[ ! "$FORMULA" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+  if ! is_valid_formula_name "$FORMULA"; then
     echo "  [ERROR] Invalid formula name '$FORMULA', skipping!" >&2
     continue
   fi
@@ -320,8 +341,10 @@ for FORMULA in $FORMULAS; do
   fi
 
   # 2. Fetch upstream metadata from Homebrew API
-  API_URL="${UPSTREAM_API_BASE}/${FORMULA}.json"
-  META_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
+  UPSTREAM_VER=""
+  UPSTREAM_REV=0
+  IFS='|' read -r UPSTREAM_VER UPSTREAM_REV <<< "$(resolve_upstream_api_version "$FORMULA" "$UPSTREAM_API_BASE")"
+  UPSTREAM_REV=${UPSTREAM_REV:-0}
 
   UPSTREAM_META=$(extract_formula_meta "$TMP_RB")
   IFS='|' read -r PARSED_UPSTREAM_VER PARSED_UPSTREAM_REV UPSTREAM_ARM64_ONLY <<< "$UPSTREAM_META"
@@ -334,6 +357,7 @@ for FORMULA in $FORMULAS; do
     fi
 
     echo "  [FALLBACK] Formula '$FORMULA' requires :arm64 on macOS; searching for latest Intel-compatible version..."
+    META_JSON=$(curl -sSfL "${UPSTREAM_API_BASE}/${FORMULA}.json" 2>/dev/null || true)
     FALLBACK_CANDIDATES=$(list_versioned_candidates "$FORMULA" "$UPSTREAM_RAW_BASE" "$META_JSON")
     FALLBACK_FORMULA=""
     FALLBACK_SOURCE_URL=""
@@ -361,19 +385,12 @@ for FORMULA in $FORMULAS; do
 
     echo "  [FALLBACK] Selected latest Intel-compatible version: $FALLBACK_FORMULA"
     FORMULA="$FALLBACK_FORMULA"
-    API_URL="${UPSTREAM_API_BASE}/${FORMULA}.json"
-    META_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
+    IFS='|' read -r UPSTREAM_VER UPSTREAM_REV <<< "$(resolve_upstream_api_version "$FORMULA" "$UPSTREAM_API_BASE")"
+    UPSTREAM_REV=${UPSTREAM_REV:-0}
   fi
 
   LOCAL_PATH="$FORMULA_DIR/${FORMULA}.rb"
   UPSTREAM_SHA=$(calc_sha256 "$TMP_RB")
-
-  UPSTREAM_VER=""
-  UPSTREAM_REV=0
-  if [[ -n "$META_JSON" ]]; then
-    UPSTREAM_VER=$(echo "$META_JSON" | jq -r '.versions.stable // empty')
-    UPSTREAM_REV=$(echo "$META_JSON" | jq -r '.revision // 0')
-  fi
 
   # Fallback: extract version/revision from .rb if API didn't return stable
   if [[ -z "$UPSTREAM_VER" ]]; then
@@ -398,7 +415,7 @@ for FORMULA in $FORMULAS; do
     LOCAL_REV=${LOCAL_REV:-0}
 
     # If state file entry was missing or corrupt (e.g. "unknown", multiline, or path-like), fallback to formula parser
-    if [[ -z "$LOCAL_VER" || "$LOCAL_VER" == "unknown" || "$LOCAL_VER" == *$'\n'* || "$LOCAL_VER" == *"/"* ]]; then
+    if ! is_valid_formula_version "$LOCAL_VER"; then
       LOCAL_META=$(extract_formula_meta "$LOCAL_PATH")
       IFS='|' read -r LOCAL_VER LOCAL_REV _ <<< "$LOCAL_META"
       LOCAL_REV=${LOCAL_REV:-0}
@@ -452,8 +469,8 @@ for FORMULA in $FORMULAS; do
     LOCAL_MAJOR=$(echo "$LOCAL_VER" | cut -d. -f1)
     UPSTREAM_MAJOR=$(echo "$UPSTREAM_VER" | cut -d. -f1)
 
-    LOCAL_MINOR=$(echo "$LOCAL_VER" | cut -d. -f2)
-    UPSTREAM_MINOR=$(echo "$UPSTREAM_VER" | cut -d. -f2)
+    LOCAL_MINOR=$(echo "$LOCAL_VER" | cut -s -d. -f2 || true)
+    UPSTREAM_MINOR=$(echo "$UPSTREAM_VER" | cut -s -d. -f2 || true)
     LOCAL_MAJOR_MINOR="${LOCAL_MAJOR}.${LOCAL_MINOR}"
     UPSTREAM_MAJOR_MINOR="${UPSTREAM_MAJOR}.${UPSTREAM_MINOR}"
 
@@ -497,16 +514,7 @@ for FORMULA in $FORMULAS; do
         CANDIDATE_SHA=$(calc_sha256 "$CANDIDATE_PATH")
         CANDIDATE_VER=${CANDIDATE_VER:-$LOCAL_VER}
         CANDIDATE_REV=${CANDIDATE_REV:-0}
-
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        TMP_STATE=$(mktemp)
-        jq --arg n "$CANDIDATE" \
-           --arg v "$CANDIDATE_VER" \
-           --argjson r "$CANDIDATE_REV" \
-           --arg s "$CANDIDATE_SHA" \
-           --arg t "$TIMESTAMP" \
-           '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t, is_versioned: true})' \
-           "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+        update_formula_state "$STATE_FILE" "$CANDIDATE" "$CANDIDATE_VER" "$CANDIDATE_REV" "$CANDIDATE_SHA" "is_versioned"
 
         UPDATED_LIST+=("$CANDIDATE")
         PRESERVED_CANDIDATE_PATH="$CANDIDATE_PATH"
@@ -521,7 +529,6 @@ for FORMULA in $FORMULAS; do
   mv "$TMP_RB" "$LOCAL_PATH"
 
   # Qualify any existing tap runtime dependencies in the updated formula(s)
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [[ -f "$SCRIPT_DIR/qualify_dependencies.sh" ]]; then
     QUALIFY_ARGS=(--formula-dir "$FORMULA_DIR" "$FORMULA")
     if [[ -n "$PRESERVED_CANDIDATE_PATH" && -f "$PRESERVED_CANDIDATE_PATH" ]]; then
@@ -531,25 +538,11 @@ for FORMULA in $FORMULAS; do
   fi
 
   # Update state JSON
-  TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  TMP_STATE=$(mktemp)
+  STATE_FLAG=""
   if [[ "$IS_DEPENDENCY" == "true" ]]; then
-    jq --arg n "$FORMULA" \
-       --arg v "$UPSTREAM_VER" \
-       --argjson r "$UPSTREAM_REV" \
-       --arg s "$UPSTREAM_SHA" \
-       --arg t "$TIMESTAMP" \
-       '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t, is_dependency: true})' \
-       "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
-  else
-    jq --arg n "$FORMULA" \
-       --arg v "$UPSTREAM_VER" \
-       --argjson r "$UPSTREAM_REV" \
-       --arg s "$UPSTREAM_SHA" \
-       --arg t "$TIMESTAMP" \
-       '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t})' \
-       "$STATE_FILE" > "$TMP_STATE" && mv "$TMP_STATE" "$STATE_FILE"
+    STATE_FLAG="is_dependency"
   fi
+  update_formula_state "$STATE_FILE" "$FORMULA" "$UPSTREAM_VER" "$UPSTREAM_REV" "$UPSTREAM_SHA" "$STATE_FLAG"
 
   UPDATED_LIST+=("$FORMULA")
 
@@ -571,7 +564,6 @@ done
 if [[ "$WITH_DEPS" == "true" && ${#UPDATED_LIST[@]} -gt 0 && "$DRY_RUN" != "true" ]]; then
   echo ""
   echo "Syncing runtime dependencies for updated formulas: ${UPDATED_LIST[*]}"
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [[ -f "$SCRIPT_DIR/sync_dependencies.sh" ]]; then
     bash "$SCRIPT_DIR/sync_dependencies.sh" \
       --formula-dir "$FORMULA_DIR" \
@@ -594,7 +586,7 @@ fi
 # ------------------------------------------------------------------------------
 for CASK in $CASKS; do
   echo ""
-  if [[ ! "$CASK" =~ ^[a-zA-Z0-9._+-]+(@[a-zA-Z0-9._+-]+)?$ ]]; then
+  if ! is_valid_cask_name "$CASK"; then
     echo "  [ERROR] Invalid cask name '$CASK', skipping!" >&2
     continue
   fi
@@ -701,8 +693,8 @@ done
 
 TOTAL_UPDATED_COUNT=$(( ${#UPDATED_LIST[@]} + ${#UPDATED_CASKS_LIST[@]} ))
 
-# Push all accumulated commits once at the end
-if [[ "$AUTO_PUSH" == "true" && $TOTAL_UPDATED_COUNT -gt 0 ]]; then
+# Push all accumulated commits once at the end (skipped in dry-run)
+if [[ "$DRY_RUN" != "true" && "$AUTO_PUSH" == "true" && $TOTAL_UPDATED_COUNT -gt 0 ]]; then
   git_push_changes
 fi
 

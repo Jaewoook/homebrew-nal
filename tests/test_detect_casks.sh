@@ -9,6 +9,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/Formula" "$TMP_DIR/Casks" "$TMP_DIR/scripts"
 cp "$DETECT_SCRIPT" "$TMP_DIR/scripts/detect_formulas.sh"
+cp "${SCRIPT_DIR}/scripts/formula_helpers.sh" "$TMP_DIR/scripts/formula_helpers.sh"
 
 cat <<'EOF' > "$TMP_DIR/Formula/docker.rb"
 class Docker < Formula

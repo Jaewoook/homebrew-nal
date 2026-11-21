@@ -10,8 +10,9 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/Formula"
 mkdir -p "$TMP_DIR/scripts"
 
-# Copy detect_formulas.sh to TMP_DIR
+# Copy detect_formulas.sh and formula_helpers.sh to TMP_DIR
 cp "$DETECT_SCRIPT" "$TMP_DIR/scripts/detect_formulas.sh"
+cp "${SCRIPT_DIR}/scripts/formula_helpers.sh" "$TMP_DIR/scripts/formula_helpers.sh"
 
 # Create a dependency formula
 cat <<'EOF' > "$TMP_DIR/Formula/dep_c.rb"

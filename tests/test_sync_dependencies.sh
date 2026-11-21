@@ -18,7 +18,7 @@ echo "{}" > "$TMP_DIR/.formula-versions.json"
 
 # Create a mock upstream directory with helper (Formula/h/) and libfoo (Formula/lib/)
 MOCK_UPSTREAM="$TMP_DIR/upstream"
-mkdir -p "$MOCK_UPSTREAM/Formula/h" "$MOCK_UPSTREAM/Formula/lib" "$MOCK_UPSTREAM/Formula/c" "$MOCK_UPSTREAM/Formula/l" "$MOCK_UPSTREAM/Patches/helper"
+mkdir -p "$MOCK_UPSTREAM/api" "$MOCK_UPSTREAM/Formula/h" "$MOCK_UPSTREAM/Formula/lib" "$MOCK_UPSTREAM/Formula/c" "$MOCK_UPSTREAM/Formula/l" "$MOCK_UPSTREAM/Patches/helper"
 cat <<'EOF' > "$MOCK_UPSTREAM/Patches/helper/fix-paths.diff"
 --- a/foo
 +++ b/foo
@@ -85,11 +85,12 @@ class App < Formula
 end
 EOF
 
-# Run sync_dependencies with custom upstream url or base
+# Run sync_dependencies offline against file:// mock upstream and API base
 bash "$SYNC_DEPS_SCRIPT" \
   --formula-dir "$TMP_DIR/Formula" \
   --state-file "$TMP_DIR/.formula-versions.json" \
   --upstream-base "file://${MOCK_UPSTREAM}" \
+  --upstream-api-base "file://${MOCK_UPSTREAM}/api" \
   --tap "jaewoook/nal" \
   app
 

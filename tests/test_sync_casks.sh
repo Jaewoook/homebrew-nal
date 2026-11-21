@@ -83,7 +83,7 @@ touch "$TMP_DIR/Casks/extra.rb"
 (
   cd "$TMP_DIR"
   # Run in scheduled mode (no formulas or casks arguments)
-  PATH="$TMP_DIR/mock_bin:$PATH" GITHUB_OUTPUT="$OUTPUT_FILE" bash "$TMP_DIR/scripts/sync_formulas.sh" --dry-run > "$TMP_DIR/scheduled.log" 2>&1 || true
+  PATH="$TMP_DIR/mock_bin:$PATH" GITHUB_OUTPUT="$OUTPUT_FILE" bash "$TMP_DIR/scripts/sync_formulas.sh" --dry-run > "$TMP_DIR/scheduled.log" 2>&1
 )
 
 if ! grep -q "Checking cask: extra" "$TMP_DIR/scheduled.log"; then

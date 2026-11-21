@@ -21,30 +21,37 @@ TARGETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --formula-dir)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       FORMULA_DIR="$2"
       shift 2
       ;;
     --patches-dir)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       PATCHES_DIR="$2"
       shift 2
       ;;
     --state-file)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       STATE_FILE="$2"
       shift 2
       ;;
     --upstream-base)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       UPSTREAM_BASE="$2"
       shift 2
       ;;
     --upstream-api-base)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       UPSTREAM_API_BASE="$2"
       shift 2
       ;;
     --tap)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       TAP_NAME="$2"
       shift 2
       ;;
     --max-depth)
+      [ $# -ge 2 ] || { echo "Error: $1 requires a value" >&2; exit 1; }
       MAX_DEPTH="$2"
       shift 2
       ;;
@@ -63,6 +70,10 @@ Options:
   -h, --help              Show this help message
 EOF
       exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      exit 1
       ;;
     *)
       TARGETS+=("$1")
@@ -91,33 +102,7 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 extract_runtime_deps() {
-  local rb_file="$1"
-  [ -f "$rb_file" ] || return 0
-  # Strip on_linux/on_arm blocks and extract runtime depends_on (ignoring :build and :test, including array syntax like [:build, :test])
-  awk '
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*on_(linux|arm)[[:space:]]+do([[:space:]]|$)/ {
-      in_skip = 1
-      match($0, /^[[:space:]]*/)
-      skip_indent = RLENGTH
-      next
-    }
-    in_skip {
-      match($0, /^[[:space:]]*/)
-      if (RLENGTH == skip_indent && $0 ~ /^[[:space:]]*end([[:space:]]|$)/) {
-        in_skip = 0
-      }
-      next
-    }
-    { print }
-  ' "$rb_file" 2>/dev/null \
-    | sed 's/#.*//' \
-    | grep -E '^[[:space:]]*depends_on[[:space:]]+"[^"]+"' 2>/dev/null \
-    | grep -v -E '=>.*:(build|test)\b' \
-    | grep -v -E 'if[[:space:]]+DevelopmentTools\.clang_build_version[[:space:]]*<=[[:space:]]*1500' \
-    | sed -E 's/^[[:space:]]*depends_on[[:space:]]+"([^"]+)".*/\1/' \
-    | sed "s|^${TAP_NAME}/||" \
-    | sort -u || true
+  extract_formula_deps "$1" --tap "$TAP_NAME"
 }
 
 VISITED_FILE=$(mktemp)
@@ -131,7 +116,7 @@ register_dependency() {
     return 0
   fi
 
-  if [[ ! "$dep" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+  if ! is_valid_formula_name "$dep"; then
     echo "  [WARN] Invalid dependency name '$dep', skipping!" >&2
     return 0
   fi
@@ -177,7 +162,7 @@ register_dependency() {
   local existing_ver
   existing_ver=$(jq -r --arg n "$dep" '.[$n].version // empty' "$STATE_FILE" 2>/dev/null || true)
   local needs_state_update=0
-  if [ "$is_new" -eq 1 ] || [ -z "$existing_ver" ] || [ "$existing_ver" = "unknown" ] || [[ "$existing_ver" == *$'\n'* ]] || [[ "$existing_ver" == *"/"* ]]; then
+  if [ "$is_new" -eq 1 ] || ! is_valid_formula_version "$existing_ver"; then
     needs_state_update=1
   fi
 
@@ -188,13 +173,8 @@ register_dependency() {
     local_rev=0
 
     if [ "$is_new" -eq 1 ] && [ -n "$UPSTREAM_API_BASE" ]; then
-      local api_json
-      api_json=$(curl -sSfL "${UPSTREAM_API_BASE}/${dep}.json" 2>/dev/null || true)
-      if [ -n "$api_json" ]; then
-        local_ver=$(echo "$api_json" | jq -r '.versions.stable // empty' 2>/dev/null || true)
-        local_rev=$(echo "$api_json" | jq -r '.revision // 0' 2>/dev/null || echo "0")
-        local_rev=${local_rev:-0}
-      fi
+      IFS='|' read -r local_ver local_rev <<< "$(resolve_upstream_api_version "$dep" "$UPSTREAM_API_BASE")"
+      local_rev=${local_rev:-0}
     fi
 
     if [ -z "$local_ver" ]; then
@@ -204,28 +184,11 @@ register_dependency() {
       local_rev="${parsed_rev:-0}"
     fi
 
-    local timestamp
-    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-    local tmp_state
-    tmp_state=$(mktemp)
+    local state_flag=""
     if [ "$is_new" -eq 1 ] || ! jq -e --arg n "$dep" 'has($n)' "$STATE_FILE" >/dev/null 2>&1; then
-      jq --arg n "$dep" \
-         --arg v "$local_ver" \
-         --argjson r "$local_rev" \
-         --arg s "$local_sha" \
-         --arg t "$timestamp" \
-         '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t, is_dependency: true})' \
-         "$STATE_FILE" > "$tmp_state" && mv "$tmp_state" "$STATE_FILE"
-    else
-      jq --arg n "$dep" \
-         --arg v "$local_ver" \
-         --argjson r "$local_rev" \
-         --arg s "$local_sha" \
-         --arg t "$timestamp" \
-         '.[$n] = ((.[$n] // {}) + {version: $v, revision: $r, sha256: $s, last_updated: $t})' \
-         "$STATE_FILE" > "$tmp_state" && mv "$tmp_state" "$STATE_FILE"
+      state_flag="is_dependency"
     fi
+    update_formula_state "$STATE_FILE" "$dep" "$local_ver" "$local_rev" "$local_sha" "$state_flag"
   fi
 
   # Recursively process runtime dependencies of this dependency
@@ -241,7 +204,7 @@ register_dependency() {
 echo "Resolving dependencies for: ${TARGETS[*]}"
 
 for target in "${TARGETS[@]}"; do
-  if [[ ! "$target" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]]; then
+  if ! is_valid_formula_name "$target"; then
     echo "Invalid formula name '$target'. Skipping dependency resolution." >&2
     continue
   fi
@@ -261,7 +224,6 @@ for target in "${TARGETS[@]}"; do
 done
 
 # Run qualify_dependencies script to update depends_on references
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUALIFY_SCRIPT="${SCRIPT_DIR}/qualify_dependencies.sh"
 if [ -f "$QUALIFY_SCRIPT" ]; then
   bash "$QUALIFY_SCRIPT" --formula-dir "$FORMULA_DIR" --tap "$TAP_NAME"

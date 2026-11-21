@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/formula_helpers.sh
+source "${SCRIPT_DIR}/formula_helpers.sh"
+
 # Inputs from environment or defaults
 FORMULA_INPUT="${FORMULA_INPUT:-}"
 CASK_INPUT="${CASK_INPUT:-}"
@@ -19,9 +23,12 @@ if [ -n "$FORMULA_INPUT" ] || [ -n "$CASK_INPUT" ]; then
         TARGETS+=("$(basename "$f" .rb)")
       done
     else
-      CLEANED=$(echo "$FORMULA_INPUT" | tr ',' ' ')
-      for name in $CLEANED; do
-        if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]] && [ -f "Formula/${name}.rb" ]; then
+      CLEANED=$(printf '%s' "$FORMULA_INPUT" | tr ',\n\t' '   ')
+      RAW_FORMULAS=()
+      IFS=' ' read -ra RAW_FORMULAS <<< "$CLEANED"
+      for name in ${RAW_FORMULAS[@]+"${RAW_FORMULAS[@]}"}; do
+        [ -n "$name" ] || continue
+        if is_valid_formula_name "$name" && [ -f "Formula/${name}.rb" ]; then
           TARGETS+=("$name")
         else
           echo "::warning::Formula Formula/${name}.rb not found or invalid, skipping."
@@ -37,9 +44,12 @@ if [ -n "$FORMULA_INPUT" ] || [ -n "$CASK_INPUT" ]; then
         CASK_TARGETS+=("$(basename "$c" .rb)")
       done
     else
-      CLEANED_CASKS=$(echo "$CASK_INPUT" | tr ',' ' ')
-      for name in $CLEANED_CASKS; do
-        if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[a-zA-Z0-9._+-]+)?$ ]] && [ -f "Casks/${name}.rb" ]; then
+      CLEANED_CASKS=$(printf '%s' "$CASK_INPUT" | tr ',\n\t' '   ')
+      RAW_CASKS=()
+      IFS=' ' read -ra RAW_CASKS <<< "$CLEANED_CASKS"
+      for name in ${RAW_CASKS[@]+"${RAW_CASKS[@]}"}; do
+        [ -n "$name" ] || continue
+        if is_valid_cask_name "$name" && [ -f "Casks/${name}.rb" ]; then
           CASK_TARGETS+=("$name")
         else
           echo "::warning::Cask Casks/${name}.rb not found or invalid, skipping."
@@ -55,8 +65,9 @@ elif [ "$EVENT_NAME" = "push" ]; then
   fi
   CHANGED=$(echo "$RAW_DIFF" | grep -E '^(Formula/.*\.rb|Patches/)' | sed 's|^Formula/||;s|\.rb$||;s|^Patches/||;s|/.*||' | sort -u || true)
 
-  for name in $CHANGED; do
-    if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[0-9.]+)?$ ]] && [ -f "Formula/${name}.rb" ]; then
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if is_valid_formula_name "$name" && [ -f "Formula/${name}.rb" ]; then
       if grep -Fq 'root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/' "Formula/${name}.rb"; then
         if ! echo "$RAW_DIFF" | awk -v p="Patches/${name}/" 'substr($0, 1, length(p)) == p { found=1; exit } END { exit !found }'; then
           echo "Skipping ${name}: bottle block already present for homebrew-nal."
@@ -65,18 +76,19 @@ elif [ "$EVENT_NAME" = "push" ]; then
       fi
       TARGETS+=("$name")
     fi
-  done
+  done <<< "$CHANGED"
 
   CHANGED_CASKS=$(echo "$RAW_DIFF" | grep -E '^Casks/.*\.rb$' | sed 's|^Casks/||;s|\.rb$||' | sort -u || true)
-  for name in $CHANGED_CASKS; do
-    if [[ "$name" =~ ^[a-zA-Z0-9._+-]+(@[a-zA-Z0-9._+-]+)?$ ]] && [ -f "Casks/${name}.rb" ]; then
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if is_valid_cask_name "$name" && [ -f "Casks/${name}.rb" ]; then
       if grep -Fq 'https://github.com/Jaewoook/homebrew-nal/releases/download/cask-' "Casks/${name}.rb"; then
         echo "Skipping cask ${name}: mirrored binary URL already present for homebrew-nal."
         continue
       fi
       CASK_TARGETS+=("$name")
     fi
-  done
+  done <<< "$CHANGED_CASKS"
 fi
 
 if [ ${#TARGETS[@]} -eq 0 ]; then
@@ -97,11 +109,24 @@ for t in targets:
         continue
     try:
         with open(rb_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        matches = re.findall(r'depends_on\s+"(?:[^"]+/)?([^"]+)"', content)
-        for m in matches:
-            if m in target_set and m != t:
-                adj[t].add(m)
+            skip_indent = None
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                indent_m = re.match(r'^([ \t]*)', line)
+                indent = indent_m.group(1) if indent_m else ""
+                if skip_indent is not None:
+                    if indent == skip_indent and re.match(r'^[ \t]*end\b', line):
+                        skip_indent = None
+                    continue
+                if re.match(r'^[ \t]*on_(?:linux|arm)\s+do\b', line) and not re.search(r'\bend\s*$', stripped):
+                    skip_indent = indent
+                    continue
+                code_only = re.sub(r'#.*$', '', line)
+                for m in re.findall(r'depends_on\s+"(?:[^"]+/)?([^"]+)"', code_only):
+                    if m in target_set and m != t:
+                        adj[t].add(m)
     except Exception:
         pass
 
@@ -138,16 +163,8 @@ COUNT=$(( FORMULA_COUNT + CASK_COUNT ))
 
 echo "Formulas to build: $JSON_ARRAY (formula_count: $FORMULA_COUNT)"
 echo "Casks to mirror:   $CASK_JSON_ARRAY (cask_count: $CASK_COUNT)"
-if [ -n "$GITHUB_OUTPUT" ]; then
-  echo "formulas=$JSON_ARRAY" >> "$GITHUB_OUTPUT"
-  echo "formula_count=$FORMULA_COUNT" >> "$GITHUB_OUTPUT"
-  echo "casks=$CASK_JSON_ARRAY" >> "$GITHUB_OUTPUT"
-  echo "cask_count=$CASK_COUNT" >> "$GITHUB_OUTPUT"
-  echo "count=$COUNT" >> "$GITHUB_OUTPUT"
-else
-  echo "formulas=$JSON_ARRAY"
-  echo "formula_count=$FORMULA_COUNT"
-  echo "casks=$CASK_JSON_ARRAY"
-  echo "cask_count=$CASK_COUNT"
-  echo "count=$COUNT"
-fi
+emit_github_output "formulas" "$JSON_ARRAY"
+emit_github_output "formula_count" "$FORMULA_COUNT"
+emit_github_output "casks" "$CASK_JSON_ARRAY"
+emit_github_output "cask_count" "$CASK_COUNT"
+emit_github_output "count" "$COUNT"
