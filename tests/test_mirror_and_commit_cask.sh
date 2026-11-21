@@ -164,6 +164,86 @@ if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/ca
   exit 1
 fi
 
+# 3c. Nested if..end BEFORE url/sha256 inside on_intel, intel: :no_check, and #{version.no_dots}
+cat <<'EOF' > "$WORK_DIR/Casks/nested_intel.rb"
+cask "nested_intel" do
+  version "1.2.3"
+  sha256 arm:   "1111111111111111111111111111111111111111111111111111111111111111",
+         intel: :no_check
+
+  on_intel do
+    if MacOS.version < :sonoma
+      caveats "Legacy macOS warning"
+    end
+    url "https://example.com/nested-#{version.no_dots}.dmg",
+        verified: "example.com/",
+        user_agent: :fake
+  end
+
+  name "NestedIntel"
+end
+EOF
+PATH="$WORK_DIR/mock_bin:$PATH" SKIP_ARCH_BINARY_MOUNT=true GITHUB_OUTPUT="$OUT_FILE" bash "$MIRROR_CASK_SCRIPT" nested_intel
+if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/cask-nested_intel.1.2.3/nested-123.dmg"' "$WORK_DIR/Casks/nested_intel.rb" || \
+   grep -q 'intel: :no_check' "$WORK_DIR/Casks/nested_intel.rb" || \
+   grep -q 'verified:\|user_agent:' "$WORK_DIR/Casks/nested_intel.rb"; then
+  echo "Assertion failed: nested_intel.rb failed Critical #3 or Important #6 checks"
+  cat "$WORK_DIR/Casks/nested_intel.rb"
+  exit 1
+fi
+
+# 3d. Real Mach-O verification (SKIP_ARCH_BINARY_MOUNT=false)
+if command -v clang >/dev/null 2>&1 && command -v lipo >/dev/null 2>&1; then
+  echo 'int main(void){return 0;}' > "$TMP_DIR/hello.c"
+  mkdir -p "$TMP_DIR/macho_arm" "$TMP_DIR/macho_x86"
+  clang -arch arm64 "$TMP_DIR/hello.c" -o "$TMP_DIR/macho_arm/appbin"
+  clang -arch x86_64 "$TMP_DIR/hello.c" -o "$TMP_DIR/macho_x86/appbin"
+  (cd "$TMP_DIR/macho_arm" && zip -q "$TMP_DIR/arm_only.zip" appbin)
+  tar -czf "$TMP_DIR/x86_ok.tar.gz" -C "$TMP_DIR/macho_x86" appbin
+
+  ARM_ZIP_SHA=$(shasum -a 256 "$TMP_DIR/arm_only.zip" | awk '{print $1}')
+  cat <<EOF > "$WORK_DIR/Casks/arm_zip_cask.rb"
+cask "arm_zip_cask" do
+  version "1.0.0"
+  sha256 "${ARM_ZIP_SHA}"
+  url "file://${TMP_DIR}/arm_only.zip"
+  name "ArmZip"
+end
+EOF
+  if SKIP_ARCH_BINARY_MOUNT=false bash "$MIRROR_CASK_SCRIPT" arm_zip_cask 2>/dev/null; then
+    echo "Assertion failed: arm64-only zip should fail Mach-O x86_64 verification"
+    exit 1
+  fi
+
+  cat <<'EOF' > "$WORK_DIR/Casks/corrupt_zip_cask.rb"
+cask "corrupt_zip_cask" do
+  version "1.0.0"
+  sha256 :no_check
+  url "https://example.com/corrupt.zip"
+  name "CorruptZip"
+end
+EOF
+  if PATH="$WORK_DIR/mock_bin:$PATH" SKIP_ARCH_BINARY_MOUNT=false bash "$MIRROR_CASK_SCRIPT" corrupt_zip_cask 2>/dev/null; then
+    echo "Assertion failed: corrupt zip must fail extraction check instead of silently passing"
+    exit 1
+  fi
+
+  X86_TGZ_SHA=$(shasum -a 256 "$TMP_DIR/x86_ok.tar.gz" | awk '{print $1}')
+  cat <<EOF > "$WORK_DIR/Casks/x86_tgz_cask.rb"
+cask "x86_tgz_cask" do
+  version "1.0.0"
+  sha256 "${X86_TGZ_SHA}"
+  url "file://${TMP_DIR}/x86_ok.tar.gz"
+  name "X86Tgz"
+end
+EOF
+  SKIP_ARCH_BINARY_MOUNT=false GITHUB_OUTPUT="$OUT_FILE" bash "$MIRROR_CASK_SCRIPT" x86_tgz_cask
+  if ! grep -q 'url "https://github.com/Jaewoook/homebrew-nal/releases/download/cask-x86_tgz_cask.1.0.0/x86_ok.tar.gz"' "$WORK_DIR/Casks/x86_tgz_cask.rb"; then
+    echo "Assertion failed: valid x86_64 tar.gz did not pass Mach-O verification and rewrite"
+    exit 1
+  fi
+fi
+
 # 4. Test commit_cask.sh (subject line exact + [skip ci] in body)
 BOT_GPG_KEY="" GITHUB_OUTPUT="$OUT_FILE" bash "$COMMIT_CASK_SCRIPT" ghostty "1.1.2"
 LATEST_MSG=$(git log -1 --format="%s")
