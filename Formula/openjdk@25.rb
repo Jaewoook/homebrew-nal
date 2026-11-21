@@ -76,11 +76,9 @@ class OpenjdkAT25 < Formula
   end
 
   bottle do
-    sha256 cellar: :any, arm64_golden_gate: "096cc4ebdba3dcb78f084bf1b2f462cac495d46cd60b6be4b4f8a7d35c6bddfe"
-    sha256 cellar: :any, arm64_tahoe:       "35067910d9b2255378bc5919130f52c56fe387550ce32ca9f7ab035eaebc56b5"
-    sha256 cellar: :any, arm64_sequoia:     "e48c1a92f9433bdf5fee5c604cd8d6b1a4a1c8aad32a1ac9a42597528d89354e"
-    sha256               arm64_linux:       "5317a80f99ad65a5f418bc9c2eb3212d229215f54c3539bccec3c4382e082230"
-    sha256               x86_64_linux:      "3c97667d02720e0dcb55fa053506259ab749f4f807431657754663340eb58685"
+    root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/openjdk@25.25.0.5.1"
+    rebuild 1
+    sha256 cellar: :any, sequoia: "732568e1741de234c96bdb523d92d8495270e970c455a5893920eb9d02fc2559"
   end
 
   keg_only :versioned_formula
