@@ -75,13 +75,17 @@ jobs:
 
       - name: Register repository as a Homebrew tap
         run: |
-          TAP_DIR="$(/usr/local/bin/brew --repository)/Library/Taps/jaewoook/homebrew-nal"
+          BREW_CMD=(/usr/local/bin/brew)
+          if [ "$(uname -m)" = "arm64" ] && command -v arch >/dev/null 2>&1; then
+            BREW_CMD=(arch -x86_64 /usr/local/bin/brew)
+          fi
+          TAP_DIR="$("${BREW_CMD[@]}" --repository)/Library/Taps/jaewoook/homebrew-nal"
           mkdir -p "$(dirname "$TAP_DIR")"
           if [ -d "$TAP_DIR" ] && [ ! -L "$TAP_DIR" ]; then
             rm -rf "$TAP_DIR"
           fi
           ln -sfn "$GITHUB_WORKSPACE" "$TAP_DIR"
-          /usr/local/bin/brew trust --tap jaewoook/nal 2>/dev/null || true
+          "${BREW_CMD[@]}" trust --tap jaewoook/nal 2>/dev/null || true
 
       - name: Record host state before formula build
         env:
@@ -101,33 +105,96 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build_bottle.sh "$FORMULA_NAME"
 
-      - name: Commit updated formula bottle block
+      - name: Commit updated formula bottle block locally
         id: commit
         env:
           FORMULA_NAME: ${{ matrix.formula }}
+          BOT_NO_PUSH: 'true'
         run: bash scripts/commit_bottle.sh "$FORMULA_NAME"
 
+      - name: Check existing release state
+        id: release_check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          state=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft -q 'if .isDraft then "draft" else "published" end' 2>/dev/null || echo "missing")
+          if [ "$state" = "published" ]; then
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+            echo "created_draft=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+            echo "created_draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Bottle file to GitHub Releases
+        id: upload
         uses: softprops/action-gh-release@v3
         with:
           files: "${{ matrix.formula }}-*.tar.gz"
           fail_on_unmatched_files: true
           tag_name: "${{ env.RELEASE_TAG }}"
           name: "${{ env.RELEASE_TITLE }}"
-          target_commitish: "${{ steps.commit.outputs.commit_sha }}"
+          draft: ${{ steps.release_check.outputs.draft == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push bottle commit and publish release
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CREATED_DRAFT: ${{ steps.release_check.outputs.created_draft }}
+        run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          source scripts/formula_helpers.sh
+          git_bot_push_main
+          final_sha=$(git rev-parse HEAD)
+          if [ "$CREATED_DRAFT" = "true" ]; then
+            for attempt in 1 2 3; do
+              if gh release edit "$RELEASE_TAG" --repo "${{ github.repository }}" --draft=false --target "$final_sha"; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "::error::Failed to publish draft release $RELEASE_TAG after pushing commit $final_sha." >&2
+                exit 1
+              fi
+              sleep 2
+            done
+          fi
 
       - name: Clean up build artifacts and restore host state
         if: always()
         env:
           FORMULA_NAME: ${{ matrix.formula }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CREATED_DRAFT: ${{ steps.release_check.outputs.created_draft }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_ASK: '1'
+          NONINTERACTIVE: '1'
         run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if [ -n "${RELEASE_TAG:-}" ] && [ "${CREATED_DRAFT:-false}" = "true" ] && [ "${PUBLISH_OUTCOME:-}" != "success" ]; then
+            is_draft=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft -q '.isDraft' 2>/dev/null || echo "false")
+            if [ "$is_draft" = "true" ]; then
+              gh release delete "$RELEASE_TAG" --repo "${{ github.repository }}" --yes 2>/dev/null || true
+            fi
+          fi
           bash scripts/restore_host_state.sh restore formula "$FORMULA_NAME"
           rm -f -- *.tar.gz *.json
+          if [ "${PUBLISH_OUTCOME:-}" != "success" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+            git reset --hard origin/main 2>/dev/null || true
+          fi
           git checkout -- . 2>/dev/null || true
           git clean -fd 2>/dev/null || true
-          /usr/local/bin/brew cleanup --prune=all -s
+          BREW_CMD=(/usr/local/bin/brew)
+          if [ "$(uname -m)" = "arm64" ] && command -v arch >/dev/null 2>&1; then
+            BREW_CMD=(arch -x86_64 /usr/local/bin/brew)
+          fi
+          "${BREW_CMD[@]}" cleanup --prune=all -s || true
           git config --local --unset-all user.name 2>/dev/null || true
           git config --local --unset-all user.email 2>/dev/null || true
           git config --local --unset-all user.signingkey 2>/dev/null || true
@@ -135,8 +202,8 @@ jobs:
 
   mirror-cask:
     name: Mirror Cask (${{ matrix.cask }})
-    needs: detect
-    if: needs.detect.outputs.cask_count != '0' && needs.detect.outputs.cask_count != ''
+    needs: [detect, build]
+    if: ${{ !cancelled() && needs.detect.outputs.cask_count != '0' && needs.detect.outputs.cask_count != '' }}
     runs-on: self-hosted
     permissions:
       contents: write
@@ -163,33 +230,97 @@ jobs:
         id: mirror
         env:
           CASK_NAME: ${{ matrix.cask }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/mirror_cask.sh "$CASK_NAME"
 
-      - name: Commit updated Cask definition
+      - name: Commit updated Cask definition locally
         id: commit
         env:
           CASK_NAME: ${{ matrix.cask }}
           CASK_VERSION: ${{ steps.mirror.outputs.version }}
+          BOT_NO_PUSH: 'true'
         run: bash scripts/commit_cask.sh "$CASK_NAME" "$CASK_VERSION"
 
+      - name: Check existing release state
+        id: release_check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          state=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft -q 'if .isDraft then "draft" else "published" end' 2>/dev/null || echo "missing")
+          if [ "$state" = "published" ]; then
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+            echo "created_draft=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+            echo "created_draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Cask binary to GitHub Releases
+        id: upload
         uses: softprops/action-gh-release@v3
         with:
           files: "${{ steps.mirror.outputs.cask_file }}"
           fail_on_unmatched_files: true
           tag_name: "${{ steps.mirror.outputs.release_tag }}"
           name: "${{ steps.mirror.outputs.release_title }}"
-          target_commitish: "${{ steps.commit.outputs.commit_sha }}"
+          draft: ${{ steps.release_check.outputs.draft == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Cask commit and publish release
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CREATED_DRAFT: ${{ steps.release_check.outputs.created_draft }}
+        run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          source scripts/formula_helpers.sh
+          git_bot_push_main
+          final_sha=$(git rev-parse HEAD)
+          if [ "$CREATED_DRAFT" = "true" ]; then
+            for attempt in 1 2 3; do
+              if gh release edit "$RELEASE_TAG" --repo "${{ github.repository }}" --draft=false --target "$final_sha"; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "::error::Failed to publish draft release $RELEASE_TAG after pushing commit $final_sha." >&2
+                exit 1
+              fi
+              sleep 2
+            done
+          fi
 
       - name: Clean up Cask artifacts and restore host state
         if: always()
         env:
           CASK_NAME: ${{ matrix.cask }}
+          CASK_FILE: ${{ steps.mirror.outputs.cask_file }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CREATED_DRAFT: ${{ steps.release_check.outputs.created_draft }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_ASK: '1'
+          NONINTERACTIVE: '1'
         run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if [ -n "${RELEASE_TAG:-}" ] && [ "${CREATED_DRAFT:-false}" = "true" ] && [ "${PUBLISH_OUTCOME:-}" != "success" ]; then
+            is_draft=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft -q '.isDraft' 2>/dev/null || echo "false")
+            if [ "$is_draft" = "true" ]; then
+              gh release delete "$RELEASE_TAG" --repo "${{ github.repository }}" --yes 2>/dev/null || true
+            fi
+          fi
           bash scripts/restore_host_state.sh restore cask "$CASK_NAME"
-          rm -f -- "${{ steps.mirror.outputs.cask_file }}"
+          if [ -n "${CASK_FILE:-}" ]; then
+            rm -f -- "$CASK_FILE"
+          fi
+          if [ "${PUBLISH_OUTCOME:-}" != "success" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+            git reset --hard origin/main 2>/dev/null || true
+          fi
           git checkout -- . 2>/dev/null || true
           git clean -fd 2>/dev/null || true
           git config --local --unset-all user.name 2>/dev/null || true
