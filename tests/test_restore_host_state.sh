@@ -17,12 +17,24 @@ mkdir -p "$MOCK_BIN"
 
 INTEL_BREW_LOG="${TEST_TMP}/intel_brew.log"
 ARM64_BREW_LOG="${TEST_TMP}/arm64_brew.log"
+ARM64_ENV_LOG="${TEST_TMP}/arm64_env.log"
 ARM64_INSTALLED_FILE="${TEST_TMP}/arm64_installed.txt"
+INTEL_CASK_INSTALLED_FILE="${TEST_TMP}/intel_cask_installed.txt"
 
 cat <<'EOF' > "${MOCK_BIN}/intel_brew"
 #!/usr/bin/env bash
 echo "$@" >> "$INTEL_BREW_LOG"
 case "$1" in
+  list)
+    if [[ " $* " == *" --cask "* ]]; then
+      target="${@: -1}"
+      if grep -q "^${target}$" "$INTEL_CASK_INSTALLED_FILE" 2>/dev/null; then
+        echo "$target 1.0.0"
+        exit 0
+      fi
+    fi
+    exit 1
+    ;;
   uninstall)
     exit 0
     ;;
@@ -39,6 +51,12 @@ chmod +x "${MOCK_BIN}/intel_brew"
 cat <<'EOF' > "${MOCK_BIN}/arm64_brew"
 #!/usr/bin/env bash
 echo "$@" >> "$ARM64_BREW_LOG"
+printf 'CMAKE=%s|NONINTERACTIVE=%s|NO_AUTO_UPDATE=%s|NO_ASK=%s|PATH=%s\n' \
+  "${CMAKE_APPLE_SILICON_PROCESSOR-<unset>}" \
+  "${NONINTERACTIVE:-}" \
+  "${HOMEBREW_NO_AUTO_UPDATE:-}" \
+  "${HOMEBREW_NO_ASK:-}" \
+  "${PATH}" >> "$ARM64_ENV_LOG"
 case "$1" in
   list)
     # Target is the last argument
@@ -65,21 +83,30 @@ export ARM64_BREW_BIN="${MOCK_BIN}/arm64_brew"
 export HOST_STATE_DIR="${TEST_TMP}/state"
 export INTEL_BREW_LOG
 export ARM64_BREW_LOG
+export ARM64_ENV_LOG
 export ARM64_INSTALLED_FILE
+export INTEL_CASK_INSTALLED_FILE
 
-echo "=== Test 1: Record and restore formula that was PREVIOUSLY INSTALLED ==="
-rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG"
+echo "=== Test 1: Record and restore formula that was PREVIOUSLY INSTALLED (sanitized arm64 env) ==="
+rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG" "$ARM64_ENV_LOG"
 echo "mytool" > "$ARM64_INSTALLED_FILE"
 
-bash "$RESTORE_SCRIPT" record-state formula mytool
+CMAKE_APPLE_SILICON_PROCESSOR="x86_64" PATH="/usr/local/bin:/usr/bin:/bin" bash "$RESTORE_SCRIPT" record-state formula mytool
 grep -q "PREV_INSTALLED=true" "${HOST_STATE_DIR}/formula_mytool.env"
 
-bash "$RESTORE_SCRIPT" restore formula mytool
+CMAKE_APPLE_SILICON_PROCESSOR="x86_64" PATH="/usr/local/bin:/usr/bin:/bin" bash "$RESTORE_SCRIPT" restore formula mytool
 
 # Check Intel brew uninstalled it
 grep -q "uninstall --ignore-dependencies mytool" "$INTEL_BREW_LOG"
 # Check ARM64 brew reinstalled it
 grep -q "reinstall mytool" "$ARM64_BREW_LOG"
+# Verify CMAKE_APPLE_SILICON_PROCESSOR unset, NONINTERACTIVE/NO_AUTO_UPDATE/NO_ASK set, and arm64 bin dir in PATH
+if ! grep -q "CMAKE=<unset>|NONINTERACTIVE=1|NO_AUTO_UPDATE=1|NO_ASK=1|" "$ARM64_ENV_LOG" || \
+   ! grep -q "PATH=.*${MOCK_BIN}" "$ARM64_ENV_LOG"; then
+  echo "Assertion failed: run_arm64_brew env was not properly sanitized" >&2
+  cat "$ARM64_ENV_LOG" >&2
+  exit 1
+fi
 echo "Test 1 passed!"
 
 echo "=== Test 2: Record and restore formula that was NOT PREVIOUSLY INSTALLED ==="
@@ -103,8 +130,9 @@ if grep -q "reinstall uninstalled_tool" "$ARM64_BREW_LOG"; then
 fi
 echo "Test 2 passed!"
 
-echo "=== Test 3: Record and restore CASK that was PREVIOUSLY INSTALLED ==="
-rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG"
+echo "=== Test 3: Cask untouched in Intel Homebrew skips unnecessary /opt/homebrew reinstall ==="
+rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG" "$INTEL_CASK_INSTALLED_FILE"
+touch "$INTEL_CASK_INSTALLED_FILE"
 echo "ghostty" > "$ARM64_INSTALLED_FILE"
 
 bash "$RESTORE_SCRIPT" record-state cask ghostty
@@ -112,20 +140,34 @@ grep -q "PREV_INSTALLED=true" "${HOST_STATE_DIR}/cask_ghostty.env"
 
 bash "$RESTORE_SCRIPT" restore cask ghostty
 
-# Check Intel brew uninstalled cask
-grep -q "uninstall --cask --force ghostty" "$INTEL_BREW_LOG"
-# Check ARM64 brew reinstalled cask
-grep -q "reinstall --cask --force ghostty" "$ARM64_BREW_LOG"
+if grep -q "reinstall --cask" "$ARM64_BREW_LOG" || grep -q "uninstall --cask" "$ARM64_BREW_LOG"; then
+  echo "Error: untouched Intel cask must NOT reinstall/uninstall /opt/homebrew cask!" >&2
+  cat "$ARM64_BREW_LOG" >&2
+  exit 1
+fi
 echo "Test 3 passed!"
 
-echo "=== Test 4: Record and restore CASK that was NOT PREVIOUSLY INSTALLED ==="
+echo "=== Test 3b: Cask touched in Intel Homebrew triggers /usr/local uninstall and /opt/homebrew restore ==="
+rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG"
+echo "ghostty" > "$ARM64_INSTALLED_FILE"
+echo "" > "$INTEL_CASK_INSTALLED_FILE"
+
+bash "$RESTORE_SCRIPT" record-state cask ghostty
+echo "ghostty" > "$INTEL_CASK_INSTALLED_FILE"
+bash "$RESTORE_SCRIPT" restore cask ghostty
+
+grep -q "uninstall --cask --force ghostty" "$INTEL_BREW_LOG"
+grep -q "reinstall --cask --force ghostty" "$ARM64_BREW_LOG"
+echo "Test 3b passed!"
+
+echo "=== Test 4: Touched Intel Cask that was NOT PREVIOUSLY INSTALLED in ARM64 ==="
 rm -f "$INTEL_BREW_LOG" "$ARM64_BREW_LOG"
 rm -f "$ARM64_INSTALLED_FILE"
 touch "$ARM64_INSTALLED_FILE"
+echo "" > "$INTEL_CASK_INSTALLED_FILE"
 
 bash "$RESTORE_SCRIPT" record-state cask non_installed_cask
-grep -q "PREV_INSTALLED=false" "${HOST_STATE_DIR}/cask_non_installed_cask.env"
-
+echo "non_installed_cask" > "$INTEL_CASK_INSTALLED_FILE"
 bash "$RESTORE_SCRIPT" restore cask non_installed_cask
 
 # Check Intel brew uninstalled cask

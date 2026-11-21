@@ -16,7 +16,12 @@ if [ "$(uname -m)" = "arm64" ]; then
   exec arch -x86_64 /bin/bash "$0" "$@"
 fi
 
+BREW_BIN="${INTEL_BREW_BIN:-/usr/local/bin/brew}"
 FORMULA_NAME="${1:?Formula name required}"
+if ! is_valid_formula_name "$FORMULA_NAME"; then
+  echo "::error::Invalid formula name: $FORMULA_NAME" >&2
+  exit 1
+fi
 DRY_RUN="false"
 PKG_VERSION_ARG=""
 
@@ -52,40 +57,20 @@ if grep -Eq '^[[:space:]]*patch([[:space:]]+(:p[0-9]+[[:space:]]*,[[:space:]]*)?
 fi
 
 # 2. Resolve version & revision from Formula file (or argument)
-read -r BASE_VERSION REVISION PKG_VERSION < <(python3 - "$FORMULA_FILE" "$PKG_VERSION_ARG" <<'PY'
-import re, sys
+META=$(extract_formula_meta "$FORMULA_FILE")
+IFS='|' read -r BASE_VERSION REVISION _ <<< "$META"
+REVISION=${REVISION:-0}
 
-rb_path = sys.argv[1]
-pkg_arg = sys.argv[2]
-
-with open(rb_path, "r", encoding="utf-8") as f:
-    content = f.read()
-
-ver_match = re.search(r'^\s*version\s+"([^"]+)"', content, re.MULTILINE)
-rev_match = re.search(r'^\s*revision\s+(\d+)', content, re.MULTILINE)
-rev = int(rev_match.group(1)) if rev_match else 0
-
-if ver_match:
-    base_ver = ver_match.group(1)
-else:
-    url_match = re.search(r'^\s*url\s+"([^"]+)"', content, re.MULTILINE)
-    base_ver = ""
-    if url_match:
-        url = url_match.group(1)
-        m = re.search(r'(?:v|-)(\d+(?:\.\d+)+[a-zA-Z0-9._-]*?)(?:\.tar\.[a-z0-9]+|\.tgz|\.zip)$', url)
-        if m:
-            base_ver = m.group(1)
-
-if pkg_arg:
-    pkg_ver = pkg_arg
-    if not base_ver:
-        base_ver = pkg_arg.split("_")[0]
-else:
-    pkg_ver = f"{base_ver}_{rev}" if (base_ver and rev > 0) else base_ver
-
-print(f"{base_ver} {rev} {pkg_ver}")
-PY
-)
+if [[ -n "$PKG_VERSION_ARG" ]]; then
+  PKG_VERSION="$PKG_VERSION_ARG"
+  if [[ -z "$BASE_VERSION" ]]; then
+    BASE_VERSION="${PKG_VERSION_ARG%%_*}"
+  fi
+elif [[ -n "$BASE_VERSION" && "$REVISION" -gt 0 ]]; then
+  PKG_VERSION="${BASE_VERSION}_${REVISION}"
+else
+  PKG_VERSION="$BASE_VERSION"
+fi
 
 if [[ -z "$BASE_VERSION" ]]; then
   echo "Could not determine version for $FORMULA_NAME." >&2
@@ -98,10 +83,10 @@ ROOT_URL="https://github.com/Jaewoook/homebrew-nal/releases/download/${RELEASE_T
 # ==============================================================================
 # Fast-Path A: Upstream GHCR Bottle Mirroring (x86_64_* or all)
 # ==============================================================================
-API_URL="https://formulae.brew.sh/api/formula/${FORMULA_NAME}.json"
+API_URL="${UPSTREAM_API_BASE:-https://formulae.brew.sh/api}/formula/${FORMULA_NAME}.json"
 API_JSON=$(curl -sSfL "$API_URL" 2>/dev/null || true)
 
-HOST_BOTTLE_TAG=$(/usr/local/bin/brew ruby -e 'puts Utils::Bottles.tag.to_s rescue ""' 2>/dev/null || echo "")
+HOST_BOTTLE_TAG=$("$BREW_BIN" ruby -e 'puts Utils::Bottles.tag.to_s rescue ""' 2>/dev/null || echo "")
 if [[ -z "$HOST_BOTTLE_TAG" ]]; then
   MACOS_VER=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo "")
   case "$MACOS_VER" in
@@ -139,7 +124,8 @@ files = bottle_stable.get("files") or {}
 rebuild = int(bottle_stable.get("rebuild") or 0)
 
 # Build priority list: host OS tag first, then older backward-compatible macOS versions,
-# then universal 'all', then newer macOS versions as last resort.
+# then universal 'all'. Exclude newer macOS generations so e.g. sequoia falls back to
+# source build instead of mirroring an incompatible tahoe bottle.
 macos_generations = ["monterey", "ventura", "sonoma", "sequoia", "tahoe"]
 
 # Find index of host tag (fallback to sequoia if unknown)
@@ -147,14 +133,11 @@ clean_host = host_tag.replace("x86_64_", "")
 host_idx = macos_generations.index(clean_host) if clean_host in macos_generations else 3
 
 older_generations = list(reversed(macos_generations[:host_idx]))
-newer_generations = macos_generations[host_idx + 1:]
 
 priority = [f"x86_64_{clean_host}", clean_host]
 for g in older_generations:
     priority.extend([f"x86_64_{g}", g])
 priority.append("all")
-for g in newer_generations:
-    priority.extend([f"x86_64_{g}", g])
 
 for tag in priority:
     if tag in files:
@@ -176,20 +159,30 @@ PY
     fi
 
     echo "Fast-Path A: Found upstream x86_64/all bottle (${BOTTLE_TAG}) for ${FORMULA_NAME} ${PKG_VERSION}"
-    GHCR_REPO_PATH=$(echo "$BOTTLE_URL" | sed -E 's|^https://ghcr\.io/v2/||; s|/blobs/sha256:.*$||')
-    GHCR_TOKEN=$(curl -sSfL "https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_REPO_PATH}:pull" | jq -r '.token // empty' || true)
+    if (( BOTTLE_REBUILD > 0 )); then
+      BOTTLE_FILENAME="${FORMULA_NAME}-${PKG_VERSION}.${BOTTLE_TAG}.bottle.${BOTTLE_REBUILD}.tar.gz"
+    else
+      BOTTLE_FILENAME="${FORMULA_NAME}-${PKG_VERSION}.${BOTTLE_TAG}.bottle.tar.gz"
+    fi
 
-    if [[ -n "$GHCR_TOKEN" ]]; then
-      if (( BOTTLE_REBUILD > 0 )); then
-        BOTTLE_FILENAME="${FORMULA_NAME}-${PKG_VERSION}.${BOTTLE_TAG}.bottle.${BOTTLE_REBUILD}.tar.gz"
-      else
-        BOTTLE_FILENAME="${FORMULA_NAME}-${PKG_VERSION}.${BOTTLE_TAG}.bottle.tar.gz"
+    DOWNLOAD_OK="false"
+    if [[ "$BOTTLE_URL" == https://ghcr.io/* ]]; then
+      GHCR_REPO_PATH=$(echo "$BOTTLE_URL" | sed -E 's|^https://ghcr\.io/v2/||; s|/blobs/sha256:.*$||')
+      GHCR_TOKEN_BASE="${GHCR_TOKEN_BASE:-https://ghcr.io/token}"
+      GHCR_TOKEN=$(curl -sSfL "${GHCR_TOKEN_BASE}?service=ghcr.io&scope=repository:${GHCR_REPO_PATH}:pull" | jq -r '.token // empty' || true)
+      if [[ -n "$GHCR_TOKEN" ]] && curl -sSfL -H "Authorization: Bearer ${GHCR_TOKEN}" -o "$BOTTLE_FILENAME" "$BOTTLE_URL"; then
+        DOWNLOAD_OK="true"
       fi
+    else
+      if curl -sSfL -o "$BOTTLE_FILENAME" "$BOTTLE_URL"; then
+        DOWNLOAD_OK="true"
+      fi
+    fi
 
-      if curl -sSfL -H "Authorization: Bearer ${GHCR_TOKEN}" -o "$BOTTLE_FILENAME" "$BOTTLE_URL"; then
-        ACTUAL_SHA=$(shasum -a 256 "$BOTTLE_FILENAME" | awk '{print $1}')
-        if [[ "$ACTUAL_SHA" == "$BOTTLE_SHA" ]]; then
-          python3 - "$FORMULA_FILE" "$ROOT_URL" "$BOTTLE_TAG" "$BOTTLE_SHA" "$BOTTLE_REBUILD" "$BOTTLE_CELLAR" <<'PY'
+    if [[ "$DOWNLOAD_OK" == "true" ]]; then
+      ACTUAL_SHA=$(calc_sha256 "$BOTTLE_FILENAME")
+      if [[ "$ACTUAL_SHA" == "$BOTTLE_SHA" ]]; then
+        python3 - "$FORMULA_FILE" "$ROOT_URL" "$BOTTLE_TAG" "$BOTTLE_SHA" "$BOTTLE_REBUILD" "$BOTTLE_CELLAR" <<'PY'
 import re, sys
 
 rb_path, root_url, tag, sha, rebuild_str, cellar = sys.argv[1:7]
@@ -198,34 +191,134 @@ rebuild = int(rebuild_str)
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
 
-lines = ['  bottle do', f'    root_url "{root_url}"']
-if rebuild > 0:
-    lines.append(f'    rebuild {rebuild}')
-if cellar in (":any", ":any_skip_relocation"):
-    lines.append(f'    sha256 cellar: {cellar}, {tag}: "{sha}"')
-else:
-    lines.append(f'    sha256 {tag}: "{sha}"')
-lines.append('  end')
-new_block = "\n".join(lines)
+def build_block(indent):
+    lines = [f"{indent}bottle do", f'{indent}  root_url "{root_url}"']
+    if rebuild > 0:
+        lines.append(f"{indent}  rebuild {rebuild}")
+    if cellar in (":any", ":any_skip_relocation"):
+        lines.append(f'{indent}  sha256 cellar: {cellar}, {tag}: "{sha}"')
+    else:
+        lines.append(f'{indent}  sha256 {tag}: "{sha}"')
+    lines.append(f"{indent}end")
+    return "\n".join(lines)
 
-if re.search(r'^\s*bottle\s+do\b.*?^\s*end\b', content, re.MULTILINE | re.DOTALL):
-    content = re.sub(r'^\s*bottle\s+do\b.*?^\s*end\b', new_block, content, count=1, flags=re.MULTILINE | re.DOTALL)
-elif re.search(r'^\s*license\s+[^\n]+\n', content, re.MULTILINE):
-    content = re.sub(r'(^\s*license\s+[^\n]+\n)', r'\1\n' + new_block + '\n', content, count=1, flags=re.MULTILINE)
-elif re.search(r'^\s*sha256\s+[^\n]+\n', content, re.MULTILINE):
-    content = re.sub(r'(^\s*sha256\s+[^\n]+\n)', r'\1\n' + new_block + '\n', content, count=1, flags=re.MULTILINE)
+m_existing = re.search(r'^([ \t]*)bottle\s+do\b.*?^\1end\b', content, re.MULTILINE | re.DOTALL)
+if m_existing:
+    new_block = build_block(m_existing.group(1))
+    content = re.sub(
+        r'^([ \t]*)bottle\s+do\b.*?^\1end\b',
+        lambda _m: new_block,
+        content,
+        count=1,
+        flags=re.MULTILINE | re.DOTALL,
+    )
 else:
-    content = re.sub(r'(^\s*url\s+[^\n]+\n)', r'\1\n' + new_block + '\n', content, count=1, flags=re.MULTILINE)
+    def strip_quotes_and_comments(s):
+        out = []
+        i = 0
+        n = len(s)
+        in_quote = None
+        while i < n:
+            ch = s[i]
+            if in_quote:
+                if ch == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                if ch == in_quote:
+                    in_quote = None
+                i += 1
+                continue
+            if ch == "#":
+                break
+            if ch in ('"', "'"):
+                in_quote = ch
+                out.append(" ")
+                i += 1
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    lines_raw = content.splitlines(keepends=True)
+    in_class = False
+    class_indent = ""
+    body_indent = "  "
+    block_depth = 0
+    bracket_depth = 0
+    insert_idx = None
+    last_meta_end_idx = None
+
+    section_re = re.compile(
+        r'^(?:depends_on|uses_from_macos|keg_only|pour_bottle\?|link_overwrite|'
+        r'conflicts_with|deprecated!|disable!|deny_network_access!|'
+        r'on_macos|on_linux|on_intel|on_arm|on_system|'
+        r'resource|patch|service|caveats|def|test)\b'
+    )
+    meta_end_re = re.compile(
+        r'^(?:desc|homepage|url|mirror|sha256|version|revision|compatibility_version|'
+        r'version_scheme|license|head|livecheck|stable|option|no_autobump!)\b'
+    )
+
+    for idx, raw_line in enumerate(lines_raw):
+        stripped = raw_line.strip()
+        if not in_class:
+            m_cls = re.match(r'^([ \t]*)class\s+\S+\s*<\s*Formula\b', raw_line)
+            if m_cls:
+                in_class = True
+                class_indent = m_cls.group(1)
+            continue
+
+        if stripped == "" or stripped.startswith("#"):
+            continue
+
+        if bracket_depth == 0 and block_depth == 0:
+            m_ind = re.match(r'^([ \t]*)', raw_line)
+            cur_ind = m_ind.group(1) if m_ind else ""
+            if len(cur_ind) > len(class_indent) and body_indent == "  ":
+                body_indent = cur_ind
+            if cur_ind == class_indent and re.match(r'^end\b', stripped):
+                insert_idx = idx
+                break
+            if section_re.match(stripped):
+                insert_idx = idx
+                break
+
+        cleaned = strip_quotes_and_comments(raw_line)
+        open_b = cleaned.count("[") + cleaned.count("{") + cleaned.count("(")
+        close_b = cleaned.count("]") + cleaned.count("}") + cleaned.count(")")
+        opens = len(re.findall(r'(?:^|[\s;])do(?:\s*\|[^|]*\|)?\s*$', cleaned))
+        if re.match(r'^\s*(?:def|if|unless|case|begin|while|for)\b', cleaned):
+            opens += 1
+        closes = len(re.findall(r'(?<![:.@])\bend\b', cleaned))
+
+        was_open = (bracket_depth > 0 or block_depth > 0)
+        bracket_depth = max(0, bracket_depth + open_b - close_b)
+        block_depth = max(0, block_depth + opens - closes)
+        if bracket_depth == 0 and block_depth == 0 and (meta_end_re.match(stripped) or was_open):
+            last_meta_end_idx = idx + 1
+
+    new_block = build_block(body_indent)
+    if insert_idx is None:
+        insert_idx = last_meta_end_idx if last_meta_end_idx is not None else len(lines_raw)
+    prefix_blank = "\n" if insert_idx > 0 and lines_raw[insert_idx - 1].strip() != "" else ""
+    suffix_blank = (
+        "\n"
+        if insert_idx < len(lines_raw)
+        and lines_raw[insert_idx].strip() != ""
+        and not lines_raw[insert_idx].lstrip().startswith("end")
+        else ""
+    )
+    lines_raw.insert(insert_idx, f"{prefix_blank}{new_block}\n{suffix_blank}")
+    content = "".join(lines_raw)
 
 with open(rb_path, "w", encoding="utf-8") as f:
     f.write(content)
 PY
-          echo "Successfully mirrored GHCR bottle to $BOTTLE_FILENAME and updated $FORMULA_FILE"
-          exit 0
-        else
-          echo "Warning: SHA256 mismatch for downloaded GHCR bottle ($ACTUAL_SHA != $BOTTLE_SHA)" >&2
-          rm -f "$BOTTLE_FILENAME"
-        fi
+        echo "Successfully mirrored GHCR bottle to $BOTTLE_FILENAME and updated $FORMULA_FILE"
+        exit 0
+      else
+        echo "Warning: SHA256 mismatch for downloaded GHCR bottle ($ACTUAL_SHA != $BOTTLE_SHA)" >&2
+        rm -f "$BOTTLE_FILENAME"
       fi
     fi
   fi
@@ -234,35 +327,17 @@ fi
 # ==============================================================================
 # Fast-Path B: Standalone GitHub Release Binary Repackaging
 # ==============================================================================
+# Disqualify Fast-Path B if the formula declares any macOS runtime formula dependencies
+if [[ -n "$(extract_formula_deps "$FORMULA_FILE")" ]]; then
+  exit 1
+fi
+
 GH_INFO=$(python3 - "$FORMULA_FILE" "$BASE_VERSION" <<'PY'
 import re, sys
 
 rb_path, base_ver = sys.argv[1], sys.argv[2]
 with open(rb_path, "r", encoding="utf-8") as f:
     content = f.read()
-
-# Check runtime dependencies: any depends_on outside on_linux/on_arm without :build, :test, :macos, or :xcode disqualifies Fast-Path B
-skip_indent = None
-for line in content.splitlines():
-    stripped = line.strip()
-    if not stripped or stripped.startswith("#"):
-        continue
-    indent_m = re.match(r'^([ \t]*)', line)
-    indent = indent_m.group(1) if indent_m else ""
-    if skip_indent is not None:
-        if indent == skip_indent and re.match(r'^[ \t]*end\b', line):
-            skip_indent = None
-        continue
-    if re.match(r'^[ \t]*on_(?:linux|arm)\s+do\b', line) and not re.search(r'\bend\s*$', stripped):
-        skip_indent = indent
-        continue
-    if not stripped.startswith("depends_on"):
-        continue
-    code_only = re.sub(r'#.*$', '', stripped)
-    if re.search(r'=>.*:(build|test)\b', code_only) or "depends_on :macos" in code_only or "depends_on :xcode" in code_only:
-        continue
-    # Found a runtime dependency
-    sys.exit(0)
 
 url_match = re.search(r'^\s*url\s+"https://github\.com/([^/]+/[^/]+)/([^"]+)"', content, re.MULTILINE)
 if not url_match:
@@ -337,7 +412,17 @@ fi
 
 echo "Fast-Path B: Found prebuilt GitHub release asset ${ASSET_NAME} from ${GH_REPO}@${RESOLVED_TAG}"
 WORK_TMP=$(mktemp -d)
-trap 'rm -rf "$WORK_TMP"' EXIT
+CELLAR_DIR=""
+BOTTLE_PACKAGED="false"
+cleanup_fast_b() {
+  [ -n "${WORK_TMP:-}" ] && rm -rf "$WORK_TMP"
+  if [ "${BOTTLE_PACKAGED:-false}" != "true" ] && [ -n "${CELLAR_DIR:-}" ]; then
+    rm -rf "$CELLAR_DIR"
+  fi
+}
+trap cleanup_fast_b EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if ! curl -sSfL -o "$WORK_TMP/$ASSET_NAME" "$ASSET_URL"; then
   echo "Warning: Failed to download $ASSET_URL" >&2
@@ -357,22 +442,66 @@ case "$ASSET_NAME" in
     ;;
 esac
 
-# Find Mach-O x86_64 executable(s)
+# Validate clean single/standalone binary archive layout before packaging:
+# reject shared libraries (.dylib/.so), runtime subdirectories (lib/libexec/share),
+# scripts/non-doc extras, and colliding binary basenames.
 MACHO_BINS=()
+SEEN_BIN_NAMES=()
 while IFS= read -r -d '' f; do
-  if file "$f" | grep -q "Mach-O.*executable"; then
+  rel="${f#"$WORK_TMP/extracted/"}"
+  base="$(basename "$f")"
+  low_base="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+  low_rel="$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')"
+  ftype="$(file "$f" 2>/dev/null || true)"
+
+  case "$low_base" in
+    *.dylib|*.so|*.so.*)
+      echo "Archive $ASSET_NAME contains shared library $rel; falling back to source build." >&2
+      exit 1
+      ;;
+  esac
+  if printf '%s' "$ftype" | grep -q "Mach-O.*dynamically linked shared library"; then
+    echo "Archive $ASSET_NAME contains Mach-O shared library $rel; falling back to source build." >&2
+    exit 1
+  fi
+  if printf '%s' "$low_rel" | grep -Eq '(^|/)(lib|libexec|share|include|etc)/'; then
+    echo "Archive $ASSET_NAME contains non-binary runtime directory ($rel); falling back to source build." >&2
+    exit 1
+  fi
+
+  if printf '%s' "$ftype" | grep -q "Mach-O.*executable"; then
     if lipo -archs "$f" 2>/dev/null | grep -qw "x86_64"; then
+      for prev_name in ${SEEN_BIN_NAMES[@]+"${SEEN_BIN_NAMES[@]}"}; do
+        if [ "$prev_name" = "$base" ]; then
+          echo "Archive $ASSET_NAME contains duplicate binary basename '$base'; falling back to source build." >&2
+          exit 1
+        fi
+      done
+      SEEN_BIN_NAMES+=("$base")
       MACHO_BINS+=("$f")
     fi
+  else
+    case "$low_base" in
+      license*|licence*|readme*|copying*|notice*|authors*|changelog*|*.md|*.txt|*.[1-8]|.ds_store)
+        ;;
+      *)
+        echo "Archive $ASSET_NAME contains extra non-doc file ($rel); falling back to source build." >&2
+        exit 1
+        ;;
+    esac
   fi
 done < <(find "$WORK_TMP/extracted" -type f -print0)
 
-if [[ ${#MACHO_BINS[@]} -eq 0 ]]; then
-  echo "Warning: No Mach-O x86_64 executable found in $ASSET_NAME; falling back to source build." >&2
+if [[ ${#MACHO_BINS[@]} -ne 1 ]]; then
+  echo "Archive $ASSET_NAME does not contain a single standalone Mach-O x86_64 executable (found ${#MACHO_BINS[@]}); falling back to source build." >&2
   exit 1
 fi
 
-CELLAR_DIR="/usr/local/Cellar/${FORMULA_NAME}/${PKG_VERSION}"
+CELLAR_BASE="${HOMEBREW_CELLAR:-}"
+if [[ -z "$CELLAR_BASE" ]]; then
+  CELLAR_BASE=$("$BREW_BIN" --cellar 2>/dev/null || echo "/usr/local/Cellar")
+fi
+CELLAR_DIR="${CELLAR_BASE}/${FORMULA_NAME}/${PKG_VERSION}"
 rm -rf "$CELLAR_DIR"
 mkdir -p "$CELLAR_DIR/bin"
 
@@ -387,7 +516,7 @@ while IFS= read -r -d '' doc_path; do
 done < <(find "$WORK_TMP/extracted" -maxdepth 2 -type f \( -iname "LICENSE*" -o -iname "README*" -o -iname "COPYING*" \) -print0)
 
 # Generate Homebrew Tab receipt and bottle it
-if /usr/local/bin/brew ruby -e '
+if "$BREW_BIN" ruby -e '
   f = Formula["jaewoook/nal/#{ARGV[0]}"]
   tab = Tab.empty
   tab.homebrew_version = HOMEBREW_VERSION
@@ -401,18 +530,14 @@ if /usr/local/bin/brew ruby -e '
   tab.source["versions"] = { "stable" => f.stable.version.to_s, "version_scheme" => f.version_scheme }
   tab.write
 ' -- "$FORMULA_NAME" && \
-  /usr/local/bin/brew bottle --force-core-tap --root-url="$ROOT_URL" --json "jaewoook/nal/${FORMULA_NAME}"; then
+  "$BREW_BIN" bottle --force-core-tap --root-url="$ROOT_URL" --json "jaewoook/nal/${FORMULA_NAME}"; then
 
-  shopt -s nullglob
-  BOTTLE_JSON_FILES=("${FORMULA_NAME}"--*.bottle.json)
-  BOTTLE_JSON="${BOTTLE_JSON_FILES[0]:-}"
-  if [[ -n "$BOTTLE_JSON" && -f "$BOTTLE_JSON" ]]; then
-    /usr/local/bin/brew bottle --merge --write --no-commit "$BOTTLE_JSON"
-    normalize_bottle_archives "$FORMULA_NAME"
+  if merge_and_normalize_bottle "$BREW_BIN" "$FORMULA_NAME"; then
+    BOTTLE_PACKAGED="true"
     echo "Successfully packaged prebuilt binary into bottle for $FORMULA_NAME"
     exit 0
   fi
 fi
 
-rm -rf "$CELLAR_DIR"
+exit 1
 exit 1

@@ -24,6 +24,42 @@ if (cd "$TMP_DIR" && bash "$MIRROR_HELPER" custom_dep_app --dry-run); then
   exit 1
 fi
 
+cat <<'EOF' > "$TMP_DIR/mock_bin/intel_brew"
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --cellar)
+    echo "${MOCK_CELLAR_DIR:-$TMP_DIR/Cellar}"
+    ;;
+  ruby)
+    code="${3:-${2:-}}"
+    if [[ "$code" == *"Utils::Bottles.tag"* ]]; then
+      echo "${MOCK_HOST_TAG:-sequoia}"
+    elif [[ "$code" == *"Tab.empty"* ]]; then
+      :
+    fi
+    ;;
+  bottle)
+    if [[ " $* " == *" --merge "* ]]; then
+      exit 0
+    fi
+    formula="${@: -1}"
+    formula="${formula##*/}"
+    ver="${MOCK_PKG_VER:-1.0.0}"
+    touch "${formula}--${ver}.sequoia.bottle.json" "${formula}--${ver}.sequoia.bottle.tar.gz"
+    ;;
+esac
+EOF
+chmod +x "$TMP_DIR/mock_bin/intel_brew"
+export INTEL_BREW_BIN="$TMP_DIR/mock_bin/intel_brew"
+export MOCK_CELLAR_DIR="$TMP_DIR/Cellar"
+
+# 1b. Invalid formula name must fail cleanly
+if (cd "$TMP_DIR" && bash "$MIRROR_HELPER" "../evil" --dry-run 2>/dev/null); then
+  echo "Assertion failed: invalid formula name should be rejected"
+  exit 1
+fi
+
 # 2. Formula with upstream x86_64 bottle in formulae.brew.sh API (Fast-Path A dry-run check)
 cat <<'EOF' > "$TMP_DIR/Formula/jq_demo.rb"
 class JqDemo < Formula
@@ -108,9 +144,41 @@ exit 1
 EOF
 chmod +x "$TMP_DIR/mock_bin/curl"
 
-OUT_MULTI=$(cd "$TMP_DIR" && PATH="$TMP_DIR/mock_bin:$PATH" bash "$MIRROR_HELPER" multi_os --dry-run)
+OUT_MULTI=$(cd "$TMP_DIR" && PATH="$TMP_DIR/mock_bin:$PATH" MOCK_HOST_TAG="sequoia" bash "$MIRROR_HELPER" multi_os --dry-run)
 if ! echo "$OUT_MULTI" | grep -q "FAST_PATH_A:sequoia:"; then
   echo "Assertion failed: expected sequoia tag priority over tahoe, got: $OUT_MULTI"
+  exit 1
+fi
+
+# 2c. Newer-only upstream bottle (tahoe only on sequoia host) must fall back (exit 1)
+cat <<'EOF' > "$TMP_DIR/Formula/tahoe_only.rb"
+class TahoeOnly < Formula
+  desc "Tahoe only formula"
+  url "https://example.com/tahoe-1.0.0.tar.gz"
+  version "1.0.0"
+end
+EOF
+mkdir -p "$TMP_DIR/api_mock/formula"
+cat <<'JSON' > "$TMP_DIR/api_mock/formula/tahoe_only.json"
+{
+  "name": "tahoe_only",
+  "versions": { "stable": "1.0.0" },
+  "revision": 0,
+  "bottle": {
+    "stable": {
+      "rebuild": 0,
+      "files": {
+        "tahoe": {
+          "url": "file:///nonexistent/tahoe.tar.gz",
+          "sha256": "deadbeef"
+        }
+      }
+    }
+  }
+}
+JSON
+if (cd "$TMP_DIR" && MOCK_HOST_TAG="sequoia" UPSTREAM_API_BASE="file://$TMP_DIR/api_mock" bash "$MIRROR_HELPER" tahoe_only --dry-run); then
+  echo "Assertion failed: tahoe-only bottle must NOT be selected on sequoia host"
   exit 1
 fi
 
@@ -249,6 +317,186 @@ if [ ! -f "$NORM_DIR/foo--bar-1.0.sequoia.bottle.tar.gz" ]; then
   echo "Assertion failed: foo--bar bottle filename normalization failed under /bin/bash"
   ls -la "$NORM_DIR"
   exit 1
+fi
+
+# 6. Non-dry-run Fast-Path A: multi-line license and stable do block insertion must keep valid Ruby syntax
+FP_A_DIR="$TMP_DIR/fp_a"
+mkdir -p "$FP_A_DIR/Formula" "$FP_A_DIR/api/formula" "$FP_A_DIR/blobs"
+echo "dummy bottle content" > "$FP_A_DIR/blobs/bottle.txt"
+tar -czf "$FP_A_DIR/blobs/sample.tar.gz" -C "$FP_A_DIR/blobs" bottle.txt
+SAMPLE_SHA=$(shasum -a 256 "$FP_A_DIR/blobs/sample.tar.gz" | awk '{print $1}')
+
+cat <<'EOF' > "$FP_A_DIR/Formula/multiline_lic.rb"
+class MultilineLic < Formula
+  desc "Multi-line license formula"
+  homepage "https://example.com"
+  url "https://example.com/multiline-1.0.0.tar.gz"
+  sha256 "1111111111111111111111111111111111111111111111111111111111111111"
+  license all_of: [
+    "GPL-2.0-or-later",
+    "MIT",
+  ]
+
+  depends_on "pkgconf" => :build
+end
+EOF
+cat <<JSON > "$FP_A_DIR/api/formula/multiline_lic.json"
+{
+  "name": "multiline_lic",
+  "versions": { "stable": "1.0.0" },
+  "revision": 0,
+  "bottle": {
+    "stable": {
+      "rebuild": 0,
+      "files": {
+        "sequoia": {
+          "url": "file://${FP_A_DIR}/blobs/sample.tar.gz",
+          "sha256": "${SAMPLE_SHA}",
+          "cellar": ":any_skip_relocation"
+        }
+      }
+    }
+  }
+}
+JSON
+
+(
+  cd "$FP_A_DIR"
+  MOCK_HOST_TAG="sequoia" UPSTREAM_API_BASE="file://${FP_A_DIR}/api" \
+    bash "$MIRROR_HELPER" multiline_lic "1.0.0"
+)
+if [ ! -f "$FP_A_DIR/multiline_lic-1.0.0.sequoia.bottle.tar.gz" ]; then
+  echo "Assertion failed: Fast-Path A non-dry-run did not download bottle archive"
+  exit 1
+fi
+if command -v ruby >/dev/null 2>&1 && ! ruby -c "$FP_A_DIR/Formula/multiline_lic.rb" >/dev/null; then
+  echo "Assertion failed: multiline_lic.rb has invalid Ruby syntax after bottle do insertion"
+  cat "$FP_A_DIR/Formula/multiline_lic.rb"
+  exit 1
+fi
+python3 - "$FP_A_DIR/Formula/multiline_lic.rb" <<'PY'
+import sys
+txt = open(sys.argv[1]).read()
+assert 'license all_of: [\n    "GPL-2.0-or-later",\n    "MIT",\n  ]' in txt, f"license block corrupted:\n{txt}"
+assert txt.index("]") < txt.index("bottle do") < txt.index('depends_on "pkgconf"'), f"bottle do misplaced:\n{txt}"
+PY
+
+cat <<'EOF' > "$FP_A_DIR/Formula/stable_blk.rb"
+class StableBlk < Formula
+  desc "Stable block formula"
+  homepage "https://example.com"
+
+  stable do
+    url "https://example.com/stableblk-2.0.0.tar.gz"
+    sha256 "2222222222222222222222222222222222222222222222222222222222222222"
+  end
+
+  keg_only :provided_by_macos
+end
+EOF
+cat <<JSON > "$FP_A_DIR/api/formula/stable_blk.json"
+{
+  "name": "stable_blk",
+  "versions": { "stable": "2.0.0" },
+  "revision": 0,
+  "bottle": {
+    "stable": {
+      "rebuild": 0,
+      "files": {
+        "sequoia": {
+          "url": "file://${FP_A_DIR}/blobs/sample.tar.gz",
+          "sha256": "${SAMPLE_SHA}"
+        }
+      }
+    }
+  }
+}
+JSON
+(
+  cd "$FP_A_DIR"
+  MOCK_HOST_TAG="sequoia" UPSTREAM_API_BASE="file://${FP_A_DIR}/api" \
+    bash "$MIRROR_HELPER" stable_blk "2.0.0"
+)
+if command -v ruby >/dev/null 2>&1 && ! ruby -c "$FP_A_DIR/Formula/stable_blk.rb" >/dev/null; then
+  echo "Assertion failed: stable_blk.rb has invalid Ruby syntax"
+  cat "$FP_A_DIR/Formula/stable_blk.rb"
+  exit 1
+fi
+python3 - "$FP_A_DIR/Formula/stable_blk.rb" <<'PY'
+import sys
+txt = open(sys.argv[1]).read()
+stable_end = txt.index("  end", txt.index("stable do"))
+assert stable_end < txt.index("bottle do") < txt.index("keg_only"), f"bottle do inserted inside stable do:\n{txt}"
+PY
+
+# 7. Non-dry-run Fast-Path B with real x86_64 Mach-O binary (single binary accepted, dylib rejected)
+if command -v clang >/dev/null 2>&1; then
+  FP_B_DIR="$TMP_DIR/fp_b"
+  mkdir -p "$FP_B_DIR/Formula" "$FP_B_DIR/src_good" "$FP_B_DIR/src_bad" "$FP_B_DIR/Cellar" "$FP_B_DIR/api/formula"
+  echo 'int main(void){return 0;}' > "$FP_B_DIR/src_good/main.c"
+  clang -arch x86_64 "$FP_B_DIR/src_good/main.c" -o "$FP_B_DIR/src_good/mytool"
+  echo "MIT" > "$FP_B_DIR/src_good/LICENSE"
+  tar -czf "$FP_B_DIR/mytool-darwin-x86_64.tar.gz" -C "$FP_B_DIR/src_good" mytool LICENSE
+
+  cp "$FP_B_DIR/src_good/mytool" "$FP_B_DIR/src_bad/mytool"
+  touch "$FP_B_DIR/src_bad/libhelper.dylib"
+  tar -czf "$FP_B_DIR/badtool-darwin-x86_64.tar.gz" -C "$FP_B_DIR/src_bad" mytool libhelper.dylib
+
+  cat <<'EOF' > "$FP_B_DIR/Formula/mytool.rb"
+class Mytool < Formula
+  desc "Standalone test tool"
+  url "https://github.com/acme/mytool/archive/refs/tags/v1.0.0.tar.gz"
+  version "1.0.0"
+end
+EOF
+  cat <<'EOF' > "$FP_B_DIR/Formula/badtool.rb"
+class Badtool < Formula
+  desc "Dylib tool"
+  url "https://github.com/acme/badtool/archive/refs/tags/v1.0.0.tar.gz"
+  version "1.0.0"
+end
+EOF
+  echo '{}' > "$FP_B_DIR/api/formula/mytool.json"
+  echo '{}' > "$FP_B_DIR/api/formula/badtool.json"
+
+  mkdir -p "$FP_B_DIR/mock_bin"
+  cat <<EOF > "$FP_B_DIR/mock_bin/gh"
+#!/usr/bin/env bash
+if [ "\$1" = "release" ] && [ "\$2" = "view" ]; then
+  if [[ " \$* " == *"acme/mytool"* ]]; then
+    echo '{"tagName":"v1.0.0","assets":[{"name":"mytool-darwin-x86_64.tar.gz","url":"file://${FP_B_DIR}/mytool-darwin-x86_64.tar.gz"}]}'
+    exit 0
+  elif [[ " \$* " == *"acme/badtool"* ]]; then
+    echo '{"tagName":"v1.0.0","assets":[{"name":"badtool-darwin-x86_64.tar.gz","url":"file://${FP_B_DIR}/badtool-darwin-x86_64.tar.gz"}]}'
+    exit 0
+  fi
+fi
+exit 1
+EOF
+  chmod +x "$FP_B_DIR/mock_bin/gh"
+
+  (
+    cd "$FP_B_DIR"
+    PATH="$FP_B_DIR/mock_bin:$PATH" MOCK_CELLAR_DIR="$FP_B_DIR/Cellar" MOCK_PKG_VER="1.0.0" \
+      UPSTREAM_API_BASE="file://${FP_B_DIR}/api" bash "$MIRROR_HELPER" mytool "1.0.0"
+  )
+  if [ ! -x "$FP_B_DIR/Cellar/mytool/1.0.0/bin/mytool" ] || [ ! -f "$FP_B_DIR/mytool-1.0.0.sequoia.bottle.tar.gz" ]; then
+    echo "Assertion failed: Fast-Path B did not stage binary in mock --cellar or create bottle"
+    exit 1
+  fi
+
+  if (
+    cd "$FP_B_DIR"
+    PATH="$FP_B_DIR/mock_bin:$PATH" MOCK_CELLAR_DIR="$FP_B_DIR/Cellar" MOCK_PKG_VER="1.0.0" \
+      UPSTREAM_API_BASE="file://${FP_B_DIR}/api" bash "$MIRROR_HELPER" badtool "1.0.0" 2>/dev/null
+  ); then
+    echo "Assertion failed: Fast-Path B should reject archives containing .dylib files"
+    exit 1
+  fi
+  if [ -d "$FP_B_DIR/Cellar/badtool" ]; then
+    echo "Assertion failed: rejected Fast-Path B leaked Cellar directory"
+    exit 1
+  fi
 fi
 
 echo "All try_mirror_formula_binary tests passed!"

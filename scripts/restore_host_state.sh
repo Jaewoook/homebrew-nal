@@ -39,7 +39,11 @@ case "$TYPE_CLEAN" in
     ;;
 esac
 
-if [[ -z "$PKG_NAME" || ! "$PKG_NAME" =~ ^[a-zA-Z0-9._+-]+(@[a-zA-Z0-9._+-]+)?$ ]]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/formula_helpers.sh
+source "${SCRIPT_DIR}/formula_helpers.sh"
+
+if [ -z "$PKG_NAME" ] || ! is_valid_cask_name "$PKG_NAME"; then
   echo "::error::Invalid or missing package name: $PKG_NAME" >&2
   exit 1
 fi
@@ -52,10 +56,24 @@ STATE_FILE="${HOST_STATE_DIR}/${PACKAGE_TYPE}_${PKG_NAME}.env"
 
 run_arm64_brew() {
   if [ -x "$ARM64_BREW_BIN" ]; then
+    local arm64_dir arm64_path
+    arm64_dir="$(dirname "$ARM64_BREW_BIN")"
+    case ":${PATH}:" in
+      *":${arm64_dir}:"*) arm64_path="$PATH" ;;
+      *) arm64_path="${arm64_dir}:${PATH}" ;;
+    esac
+    local env_cmd=(
+      env
+      -u CMAKE_APPLE_SILICON_PROCESSOR
+      "PATH=${arm64_path}"
+      HOMEBREW_NO_AUTO_UPDATE=1
+      HOMEBREW_NO_ASK=1
+      NONINTERACTIVE=1
+    )
     if command -v arch >/dev/null 2>&1; then
-      arch -arm64 "$ARM64_BREW_BIN" "$@"
+      "${env_cmd[@]}" arch -arm64 "$ARM64_BREW_BIN" "$@"
     else
-      "$ARM64_BREW_BIN" "$@"
+      "${env_cmd[@]}" "$ARM64_BREW_BIN" "$@"
     fi
   else
     return 1
@@ -64,10 +82,16 @@ run_arm64_brew() {
 
 run_intel_brew() {
   if [ -x "$INTEL_BREW_BIN" ]; then
+    local env_cmd=(
+      env
+      HOMEBREW_NO_AUTO_UPDATE=1
+      HOMEBREW_NO_ASK=1
+      NONINTERACTIVE=1
+    )
     if command -v arch >/dev/null 2>&1; then
-      arch -x86_64 "$INTEL_BREW_BIN" "$@"
+      "${env_cmd[@]}" arch -x86_64 "$INTEL_BREW_BIN" "$@"
     else
-      "$INTEL_BREW_BIN" "$@"
+      "${env_cmd[@]}" "$INTEL_BREW_BIN" "$@"
     fi
   else
     return 1
@@ -84,6 +108,7 @@ has_intel_brew() {
 
 if [ "$ACTION" = "record-state" ]; then
   PREV_INSTALLED=false
+  PREV_INTEL_CASK_INSTALLED=false
   if has_arm64_brew; then
     if [ "$PACKAGE_TYPE" = "formula" ]; then
       if run_arm64_brew list --formula --versions "$PKG_NAME" >/dev/null 2>&1; then
@@ -95,8 +120,14 @@ if [ "$ACTION" = "record-state" ]; then
       fi
     fi
   fi
+  if [ "$PACKAGE_TYPE" = "cask" ] && has_intel_brew; then
+    if run_intel_brew list --cask --versions "$PKG_NAME" >/dev/null 2>&1; then
+      PREV_INTEL_CASK_INSTALLED=true
+    fi
+  fi
 
   echo "PREV_INSTALLED=${PREV_INSTALLED}" > "$STATE_FILE"
+  echo "PREV_INTEL_CASK_INSTALLED=${PREV_INTEL_CASK_INSTALLED}" >> "$STATE_FILE"
   echo "PACKAGE_TYPE=${PACKAGE_TYPE}" >> "$STATE_FILE"
   echo "PACKAGE_NAME=${PKG_NAME}" >> "$STATE_FILE"
 
@@ -112,6 +143,7 @@ fi
 
 if [ "$ACTION" = "restore" ]; then
   PREV_INSTALLED=false
+  PREV_INTEL_CASK_INSTALLED=false
   if [ -f "$STATE_FILE" ]; then
     # shellcheck disable=SC1090
     source "$STATE_FILE"
@@ -135,12 +167,23 @@ if [ "$ACTION" = "restore" ]; then
   echo "[host-state] Previously installed in Apple Silicon: $PREV_INSTALLED"
   echo "=========================================="
 
+  INTEL_CASK_TOUCHED=false
+  if [ "$PACKAGE_TYPE" = "cask" ]; then
+    INTEL_CASK_NOW=false
+    if has_intel_brew && run_intel_brew list --cask --versions "$PKG_NAME" >/dev/null 2>&1; then
+      INTEL_CASK_NOW=true
+    fi
+    if [ "$INTEL_CASK_NOW" = "true" ] || [ "$PREV_INTEL_CASK_INSTALLED" != "$INTEL_CASK_NOW" ]; then
+      INTEL_CASK_TOUCHED=true
+    fi
+  fi
+
   # 1. Clean up Intel Homebrew installation
   if has_intel_brew; then
     echo "[host-state] Removing Intel build from /usr/local..."
     if [ "$PACKAGE_TYPE" = "formula" ]; then
       run_intel_brew uninstall --ignore-dependencies "$PKG_NAME" 2>/dev/null || true
-    else
+    elif [ "$INTEL_CASK_TOUCHED" = "true" ]; then
       run_intel_brew uninstall --cask --force "$PKG_NAME" 2>/dev/null || true
     fi
     run_intel_brew autoremove 2>/dev/null || true
@@ -150,7 +193,9 @@ if [ "$ACTION" = "restore" ]; then
 
   # 2. Restore Apple Silicon Homebrew state
   if has_arm64_brew; then
-    if [ "$PREV_INSTALLED" = "true" ]; then
+    if [ "$PACKAGE_TYPE" = "cask" ] && [ "$INTEL_CASK_TOUCHED" != "true" ]; then
+      echo "[host-state] Cask $PKG_NAME was not touched in Intel Homebrew; skipping Apple Silicon cask restore."
+    elif [ "$PREV_INSTALLED" = "true" ]; then
       echo "[host-state] Reinstalling Apple Silicon version in /opt/homebrew..."
       if [ "$PACKAGE_TYPE" = "formula" ]; then
         run_arm64_brew reinstall "$PKG_NAME" || run_arm64_brew install "$PKG_NAME" || {
