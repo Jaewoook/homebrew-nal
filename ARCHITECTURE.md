@@ -45,27 +45,52 @@ unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)
   end)
 
   begin
+    require "tab"
+    Tab.singleton_class.prepend(Module.new do
+      def for_keg(keg)
+        tab = super
+        remaps = Thread.current[:nal_tap_remaps]
+        if remaps && !remaps.empty?
+          keg_path = keg.to_s.chomp("/")
+          real_keg = begin
+            File.realpath(keg_path)
+          rescue SystemCallError
+            keg_path
+          end
+          target_tap = remaps[File.dirname(keg_path)] || remaps[File.dirname(real_keg)]
+          if target_tap && tab&.source.is_a?(Hash) && tab.source["tap"] == "homebrew/core"
+            remapped = tab.dup
+            remapped.source = tab.source.merge("tap" => target_tap.to_s)
+            remapped.tap = target_tap if remapped.respond_to?(:tap=)
+            tab = remapped
+          end
+        end
+        tab
+      end
+    end)
+
     require "formula_installer"
     FormulaInstaller.prepend(Module.new do
       def install_dependency(dep, dep_formula = dep.to_formula)
         if dep_formula.tap&.to_s == "jaewoook/nal"
-          keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
-          keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
-          keg_paths.uniq.each do |keg_path|
-            next unless keg_path&.directory?
-
-            target = keg_path.symlink? ? Utils::Path.resolved_path(keg_path) : keg_path
-            begin
-              keg = Keg.new(target)
-              if keg.tab&.source.is_a?(Hash) && keg.tab.source["tap"] == "homebrew/core"
-                keg.tab.source["tap"] = dep_formula.tap.to_s
-                keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
-              end
-            rescue RuntimeError, SystemCallError, TypeError
-            end
+          prev_remaps = Thread.current[:nal_tap_remaps] || {}
+          rack_str = dep_formula.rack.to_s.chomp("/")
+          rack_keys = [rack_str]
+          begin
+            rack_keys << File.realpath(rack_str)
+          rescue SystemCallError
           end
+          remaps = prev_remaps.dup
+          rack_keys.uniq.each { |k| remaps[k] = dep_formula.tap }
+          Thread.current[:nal_tap_remaps] = remaps
+          begin
+            super
+          ensure
+            Thread.current[:nal_tap_remaps] = prev_remaps
+          end
+        else
+          super
         end
-        super
       end
     end)
   rescue LoadError
@@ -79,10 +104,10 @@ end
    - **Tap Priority**: If a group contains a tap-qualified dependency (`jaewoook/nal/*`), it is selected over the unqualified core dependency, ensuring prebuilt bottles are poured.
    - **Global Compatibility**: Feeds both `formula.recursive_dependencies` (used by `FormulaInstaller#lock`) and `FormulaInstaller#compute_dependencies` (used by `install_dependencies`), eliminating `OperationInProgressError` lock collisions.
 
-2. **Zero-Uninstall Cross-Tap Migration (`FormulaInstaller#install_dependency`)**:
-   - **The Upstream Guard**: Homebrew's `formula_installer.rb` checks `dep_formula.tap.to_s != tab_tap.to_s` on existing keg receipts (`INSTALL_RECEIPT.json`) and aborts with `Error: <dep> is already installed from homebrew/core! Please brew uninstall <dep> first.` whenever an upgraded dependency changes tap origin.
-   - **In-Memory Tab Remapping**: Before the upstream check runs, the hook inspects existing kegs for the formula in `/usr/local/Cellar` and `/usr/local/var/homebrew/linked`. If the installed receipt originated from `homebrew/core`, its in-memory receipt is remapped to `jaewoook/nal`.
-   - **Seamless Bottle Pour**: Homebrew safely bypasses the abort, unlinks the old core keg, pours the tap's prebuilt x86_64 bottle, and records the new tap origin into the receipt without requiring manual `brew uninstall` commands from the end-user.
+2. **Zero-Uninstall Cross-Tap Migration (`Tab.for_keg` + `FormulaInstaller#install_dependency`)**:
+   - **The Upstream Guard**: Homebrew's `formula_installer.rb` checks `dep_formula.tap.to_s != tab_tap.to_s` on existing keg receipts read via `Keg#tab` → `Tab.for_keg(keg)` and aborts with `Error: <dep> is already installed from homebrew/core! Please brew uninstall <dep> first.` whenever an upgraded dependency changes tap origin.
+   - **Scoped In-Flight `Tab.for_keg` Remapping**: While `FormulaInstaller#install_dependency` executes `super` for a `jaewoook/nal` dependency, `Thread.current[:nal_tap_remaps]` maps that dependency's Cellar rack path to `dep_formula.tap`. The `Tab.for_keg` wrapper intercepts `INSTALL_RECEIPT.json` reads under that rack and returns a duplicated `Tab` with `source["tap"]` remapped from `homebrew/core` to `jaewoook/nal` (without mutating cached `Tab` objects on failure).
+   - **Seamless Bottle Pour**: Homebrew safely bypasses the abort, unlinks the old core keg, pours the tap's prebuilt x86_64 bottle, and writes the new tap receipt without requiring manual `brew uninstall` commands from the end-user.
    - **Idempotency**: Guarded by `const_defined?(:NAL_TAP_DEDUP)` so multiple formula loads in the same Ruby process evaluate safely without overhead or redefinition warnings.
 
 ---
@@ -142,7 +167,7 @@ When upstream drops Intel macOS support for an unversioned formula (`depends_on 
 
 ### Automated Major Version Preservation & Cask Sync
 - **Major Version Auto-Preservation**: When an unversioned formula advances its major (or `major.minor`) version (e.g. `node` 24 → 26), [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) retrieves the previous Intel-compatible `<formula>@<prev_version>.rb` sibling (along with any referenced `Patches/`), qualifies its tap dependencies, and records it with `is_versioned: true` in `.formula-versions.json`.
-- **Cask Synchronization**: [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) syncs Casks via `--casks` (or, on scheduled runs, the union of `.cask-versions.json` keys and `Casks/*.rb` filenames) from `Homebrew/homebrew-cask`, recording versions and SHA256 digests in `.cask-versions.json`.
+- **Formula & Cask Synchronization Scope**: Unparameterized/scheduled runs of [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) check the default formula scope (`llvm gcc` — pass explicit formula names to sync others) alongside the union of `.cask-versions.json` keys and `Casks/*.rb` filenames from `Homebrew/homebrew-cask`, recording versions and SHA256 digests in `.formula-versions.json` and `.cask-versions.json`.
 
 ---
 
@@ -154,12 +179,12 @@ The bottle and Cask pipeline (`build.yml`) runs across three stages:
 flowchart TD
     Push["Git Push / Workflow Dispatch"] --> Detect["detect_formulas.sh"]
     Detect -->|"Formulas (topological)"| BuildMatrix["Build Bottle Matrix (Runner)"]
-    Detect -->|"Casks"| CaskMatrix["Mirror Cask Matrix (Runner)"]
+    BuildMatrix -->|"Serialized after build"| CaskMatrix["Mirror Cask Matrix (Runner)"]
 
     subgraph BuildJob ["Per-Formula Build Job"]
         BuildMatrix --> ArchCheck["ArchRequirement Preflight"]
         ArchCheck --> FastPath{"try_mirror_formula_binary.sh"}
-        FastPath -->|"GHCR x86_64/all or\nGitHub Release binary"| CommitFormula["Commit Bottle & Release"]
+        FastPath -->|"GHCR x86_64/all or\nGitHub Release binary"| CommitFormula["Commit Locally -> Draft Release Upload -> Push & Publish"]
         FastPath -->|"Needs source build"| SourceBuild["Install deps & brew install --build-from-source\nbrew bottle --root-url"]
         SourceBuild --> CommitFormula
         CommitFormula --> RestoreFormula["always(): restore_host_state.sh"]
@@ -167,19 +192,19 @@ flowchart TD
 
     subgraph CaskJob ["Per-Cask Mirror Job"]
         CaskMatrix --> MirrorCask["mirror_cask.sh\nVerify x86_64 & rewrite URL"]
-        MirrorCask --> CommitCask["commit_cask.sh [skip ci]\n& Upload Release"]
+        MirrorCask --> CommitCask["Commit Locally -> Draft Release Upload -> Push & Publish [skip ci]"]
         CommitCask --> RestoreCask["always(): restore_host_state.sh"]
     end
 ```
 
 ### Detection, Rebuild Skipping & Topological Sort
 - **Incremental Build Detection (`detect_formulas.sh`)**: On `push` events, inspects changed `Formula/*.rb`, `Patches/<name>/*`, and `Casks/*.rb`. Already-bottled formulas (matching `root_url "https://github.com/Jaewoook/homebrew-nal/releases/download/...`) are skipped unless a file under literal prefix `Patches/<name>/` was modified; already-mirrored Casks are likewise skipped.
-- **Topological Dependency Sort**: Parses `depends_on` declarations among queued formulas and sorts them via recursive DFS post-order so dependencies build and publish their bottles before dependents (`max-parallel: 1`).
+- **Topological Dependency Sort**: Parses `depends_on` declarations among queued formulas and sorts them via recursive DFS post-order so dependencies build and publish their bottles before dependents (`max-parallel: 1`), and `mirror-cask` is serialized after `build` (`needs: [detect, build]`) so shared self-hosted runners never contend on `/usr/local`, `/opt/homebrew`, or git pushes.
 
 ### Architecture Preflight & Fast-Path Binary Mirroring
 1. **Architecture Preflight ([`scripts/build_bottle.sh`](scripts/build_bottle.sh))**: Evaluates `ArchRequirement` on `jaewoook/nal/<formula>` immediately after resolving the version so any `:arm64`-only formula fails fast before installing dependencies.
-2. **Fast-Path A — Upstream GHCR Bottle Mirroring ([`scripts/try_mirror_formula_binary.sh`](scripts/try_mirror_formula_binary.sh))**: Eligible when a formula has no `jaewoook/nal/*` tap dependencies and no custom `patch`/`Patches/<name>` (and `FORCE_SOURCE_BUILD != true`). Queries `formulae.brew.sh/api/formula/<name>.json` for the matching version/revision, selects an upstream bottle tag by priority (`x86_64_<host>`/`<host>` → older backward-compatible macOS generations → `all` → newer generations), downloads from `ghcr.io`, verifies SHA256, and rewrites the `bottle do` block to point to GitHub Releases.
-3. **Fast-Path B — Standalone GitHub Release Binary Repackaging**: When no upstream GHCR bottle exists and the formula has no macOS runtime dependencies (ignoring `:build`, `:test`, `[:build, :test]`, `:macos`, `:xcode`, and `on_linux`/`on_arm` blocks), checks the upstream GitHub release for macOS `x86_64`/`amd64`/`x64`/`universal` archives, verifies Mach-O `x86_64` executables via `file` and `lipo`, stages them into `/usr/local/Cellar` with a `Tab` receipt, and packages a bottle via `brew bottle`.
+2. **Fast-Path A — Upstream GHCR Bottle Mirroring ([`scripts/try_mirror_formula_binary.sh`](scripts/try_mirror_formula_binary.sh))**: Eligible when a formula has no `jaewoook/nal/*` tap dependencies and no custom `patch`/`Patches/<name>` (and `FORCE_SOURCE_BUILD != true`). Queries `formulae.brew.sh/api/formula/<name>.json` for the matching version/revision, selects an upstream bottle tag by priority (`x86_64_<host>`/`<host>` → older backward-compatible macOS generations → `all`, excluding newer macOS generations so e.g. Sequoia falls back to source build instead of mirroring a Tahoe bottle), downloads from `ghcr.io`, verifies SHA256, and writes the `bottle do` block at class scope using bracket/block depth tracking.
+3. **Fast-Path B — Standalone GitHub Release Binary Repackaging**: When no upstream GHCR bottle exists and the formula has no macOS runtime dependencies (ignoring `:build`, `:test`, `[:build, :test]`, `:macos`, `:xcode`, and `on_linux`/`on_arm` blocks), checks the upstream GitHub release for macOS `x86_64`/`amd64`/`x64`/`universal` archives, verifies the archive contains a single clean standalone Mach-O `x86_64` executable (rejecting `.dylib`/`.so` shared libraries, `lib/`/`libexec/`/`share/` runtime subdirectories, and extra scripts/assets), stages it into `"$("$BREW_BIN" --cellar)/<formula>/<version>"` with a `Tab` receipt, and packages a bottle via `brew bottle`.
 4. **Source Build Fallback & Keg Adoption**: Installs dependencies via `--only-dependencies`, adopts a matching Cellar keg if already built (otherwise compiles via `--build-from-source --skip-post-install --skip-link`), marks `built_as_bottle = true`, runs `brew bottle --root-url`, and normalizes double-hyphen tarball filenames (`<name>--` → `<name>-`).
 5. **`HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK="1"`**: Prevents Homebrew from failing builds due to unrelated deprecated core formulas or Tier 3 warnings on the runner host.
 
@@ -187,20 +212,20 @@ flowchart TD
 [`scripts/mirror_cask.sh`](scripts/mirror_cask.sh) validates that a Cask does not require `:arm64` without an `on_intel` block, extracts Intel `version`/`url`/`sha256` (using indentation-anchored `on_intel`/`on_arm` matching), downloads and verifies SHA256, inspects extracted `.zip`/tarball or mounted `.dmg` (`hdiutil` + `lipo`) contents for Mach-O `x86_64` slices, and rewrites `Casks/<name>.rb` (stripping upstream `url` kwargs such as `verified:`) to point to tag `cask-<name>.<version>`. [`scripts/commit_cask.sh`](scripts/commit_cask.sh) commits with `[skip ci]` in the commit body to avoid re-triggering `build.yml`.
 
 ### Host State Preservation & Restoration
-On Apple Silicon build hosts that maintain both `/opt/homebrew` (`arm64`) and `/usr/local` (Rosetta `x86_64`), [`scripts/restore_host_state.sh`](scripts/restore_host_state.sh) records pre-job `/opt/homebrew` install state (`record-state`) and runs on `if: always()` (`restore`) to uninstall the temporary `/usr/local` build, run `brew autoremove`, and reinstall or remove the package in `/opt/homebrew` so the host remains clean.
+On Apple Silicon build hosts that maintain both `/opt/homebrew` (`arm64`) and `/usr/local` (Rosetta `x86_64`), [`scripts/restore_host_state.sh`](scripts/restore_host_state.sh) records pre-job `/opt/homebrew` (and Intel cask) install state (`record-state`) and runs on `if: always()` (`restore`) to uninstall temporary `/usr/local` builds, run `brew autoremove`, and reinstall or remove formulas in `/opt/homebrew` with sanitized non-interactive ARM64 environment variables (`env -u CMAKE_APPLE_SILICON_PROCESSOR`, `HOMEBREW_NO_AUTO_UPDATE=1`, `HOMEBREW_NO_ASK=1`, `NONINTERACTIVE=1`, and `/opt/homebrew/bin` in `PATH`), skipping `/opt/homebrew` cask reinstalls when the cask was untouched in `/usr/local`.
 
 ---
 
 ## 4. Runner Security & Committer Lifecycle
 
-Self-hosted runners build formulas/casks and push bottle/cask updates back to `main`.
+Self-hosted runners build formulas/casks, upload release assets before updating `main`, and push bottle/cask commits cleanly.
 
-### Ephemeral Bot Git Identity & Optional Signing
-To avoid committing with the runner's personal system identity or leaving automated bot credentials in `.git/config`:
-1. [`scripts/commit_bottle.sh`](scripts/commit_bottle.sh) and [`scripts/commit_cask.sh`](scripts/commit_cask.sh) record existing local `user.name`, `user.email`, `user.signingkey`, and `commit.gpgsign` settings.
-2. Commits pass `-c` overrides using `BOT_NAME` / `BOT_EMAIL` (defaulting to `NAL Bot <nal-git-system@jaewook.me>`).
-3. **Optional GPG Signing**: If `BOT_GPG_KEY` is set and present in the host's GPG keyring, `-c commit.gpgsign=true` is applied; otherwise commits proceed unsigned without blocking the build.
-4. A Bash `trap` on `EXIT INT TERM` restores all local git settings, and `build.yml` unsets runner-local git identity config in its `always()` cleanup step.
+### Ephemeral Bot Git Identity, Signing & Two-Phase Release Publishing
+To avoid committing with the runner's personal system identity, leaving bot credentials in `.git/config`, or pointing `main` to missing assets:
+1. [`scripts/commit_bottle.sh`](scripts/commit_bottle.sh) and [`scripts/commit_cask.sh`](scripts/commit_cask.sh) delegate to `git_bot_commit_and_push` in [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh), passing `-c` identity overrides using `BOT_NAME` / `BOT_EMAIL` (defaulting to `NAL Bot <nal-git-system@jaewook.me>`).
+2. **GPG Signing with Explicit Opt-Out**: `BOT_GPG_KEY` defaults to `024D4017DFF5360A` (`${BOT_GPG_KEY-024D4017DFF5360A}`); if non-empty and present in the host's GPG keyring, `-c commit.gpgsign=true` is applied. Setting `BOT_GPG_KEY=""` (or omitting the key from the keyring) cleanly disables signing without error.
+3. **Subshell Isolation & Safe Rebase/Retry**: Git operations run inside an isolated subshell so caller `EXIT`/`INT`/`TERM` traps and env vars are preserved, rebase conflicts cleanly `git rebase --abort` instead of leaving `rebase-merge/`, and concurrent push races retry up to 3 times.
+4. **Two-Phase Release Upload (`build.yml`)**: `commit_bottle.sh`/`commit_cask.sh` commit locally (`BOT_NO_PUSH=true`), `softprops/action-gh-release@v3` uploads the archive to a draft release first (or existing published release on rebuilds), and only then does `git_bot_push_main` push `main` and publish the draft release against the pushed SHA (`gh release edit --draft=false`).
 
 ---
 
@@ -208,7 +233,7 @@ To avoid committing with the runner's personal system identity or leaving automa
 
 | Script | Responsibility | Key Flags / Environment Variables |
 | :--- | :--- | :--- |
-| [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh) | Shared upstream formula fetching, `versioned_formulae` discovery, block-scoped metadata/arch parsing, SHA256, and atomic `Patches/` downloads. | Sourced by `sync_formulas.sh` and `sync_dependencies.sh` |
+| [`scripts/formula_helpers.sh`](scripts/formula_helpers.sh) | Shared upstream formula fetching, `versioned_formulae` discovery, block-scoped metadata/arch parsing, SHA256, `Patches/` downloads, bottle archive normalization, and bot git commit/push helpers. | Sourced by `sync_formulas.sh`, `sync_dependencies.sh`, `detect_formulas.sh`, `build_bottle.sh`, `try_mirror_formula_binary.sh`, `mirror_cask.sh`, `commit_bottle.sh`, `commit_cask.sh`, and `restore_host_state.sh` |
 | [`scripts/detect_formulas.sh`](scripts/detect_formulas.sh) | Identifies formulas/casks needing build or mirroring, skips already-published artifacts unless `Patches/<name>/` changed, and sorts formulas topologically. | `FORMULA_INPUT`, `CASK_INPUT`, `EVENT_NAME`, `EVENT_BEFORE`, `GITHUB_OUTPUT` |
 | [`scripts/sync_formulas.sh`](scripts/sync_formulas.sh) | Syncs formulas and casks from upstream, selects latest Intel-compatible fallback for `:arm64`-only formulas, preserves major versions, downloads `Patches/`, and updates state JSON. | `[formulas...]`, `--casks`, `--with-deps`, `--force`, `--dry-run`, `--commit`, `--push`, `--no-gpg-sign`, `--no-preserve` |
 | [`scripts/sync_dependencies.sh`](scripts/sync_dependencies.sh) | Recursively resolves runtime dependencies (depth ≤ 2), fetches missing formulas and `Patches/`, repairs missing/corrupt state entries, and triggers qualification. | `--formula-dir`, `--patches-dir`, `--state-file`, `--upstream-base`, `--upstream-api-base`, `--max-depth` |

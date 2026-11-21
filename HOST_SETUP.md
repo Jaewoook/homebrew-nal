@@ -10,7 +10,7 @@ This guide covers everything required to set up, operate, and maintain the self-
 - **Operating System**: macOS 15 (Sequoia) running on native Intel hardware (`x86_64`) or Apple Silicon using Rosetta 2 (`arch -x86_64`).
 - **Disk Space**: At least **20 GB of free disk space** for intermediate build objects when compiling large packages (e.g. LLVM, GCC, Node).
 - **Homebrew Prefix**: Intel Homebrew must be installed under the standard `/usr/local` prefix. On Apple Silicon runners that also have `/opt/homebrew` (`arm64`), `scripts/restore_host_state.sh` automatically preserves and restores `/opt/homebrew` package state around every Intel formula build or Cask mirror job.
-- **Required Host CLI Tools**: `jq`, `python3`, `git`, `curl`, and the GitHub CLI (`gh`, used by `scripts/try_mirror_formula_binary.sh` Fast-Path B for GitHub release inspection). Note that GitHub Actions workflows pass `GITHUB_TOKEN`/`GH_TOKEN` automatically.
+- **Required Host CLI Tools**: `jq`, `python3`, `git`, `curl`, and the GitHub CLI (`gh`, used by `scripts/try_mirror_formula_binary.sh` Fast-Path B and `build.yml` release checks/publishing). Because `scripts/build_bottle.sh` resets `PATH` to standard Intel system locations (`/usr/local/bin:...`), ensure Homebrew-installed `jq` and `gh` are available under `/usr/local/bin`. Note that GitHub Actions workflows pass `GITHUB_TOKEN`/`GH_TOKEN` automatically.
 
 ### Installing Intel Homebrew
 If setting up on Apple Silicon or a fresh Intel machine:
@@ -95,8 +95,8 @@ When the self-hosted runner pushes bottle blocks back to the repository, it uses
   export BOT_NAME="My Tap Bot"
   export BOT_EMAIL="bot@example.com"
   ```
-- **Optional GPG Signing**:
-  If `BOT_GPG_KEY` is configured and present in the host's GPG keyring, commits will be cryptographically signed (`commit.gpgsign = true`). If no key is configured or available, commits proceed as standard unsigned commits without error.
+- **GPG Signing (Default Key with Explicit Opt-Out)**:
+  Commits use `BOT_GPG_KEY` (defaulting to `024D4017DFF5360A`) when that secret key is present in the host's GPG keyring, applying `-c commit.gpgsign=true` ephemerally. Set `BOT_GPG_KEY=""` to explicitly disable GPG signing even when that key is present, or omit the key from the keyring to commit unsigned.
 
 ### Setting Up a Verified GPG Key (Optional)
 If you wish to show the **Verified** badge on GitHub for bottle commits:
@@ -121,7 +121,7 @@ If you wish to show the **Verified** badge on GitHub for bottle commits:
    ```bash
    gpg --armor --export nal-git-system@jaewook.me
    ```
-4. Set the Key ID as `BOT_GPG_KEY` in your environment (or pass it in the workflow). The runner automatically applies `commit.gpgsign = true` ephemerally and restores previous git configuration after the commit.
+4. Set the Key ID as `BOT_GPG_KEY` in your environment (or pass it in the workflow; use `BOT_GPG_KEY=""` to disable signing). The runner automatically applies `commit.gpgsign=true` ephemerally via `git -c` without altering local git configuration.
 
 ---
 
@@ -130,7 +130,7 @@ If you wish to show the **Verified** badge on GitHub for bottle commits:
 For local maintenance, testing, or manual upstream syncing, use the scripts in `scripts/`:
 
 ```bash
-# Check upstream versions without making changes (dry-run)
+# Check default scheduled formula scope (llvm gcc) + tracked/local casks without making changes (dry-run)
 ./scripts/sync_formulas.sh --dry-run
 
 # Sync specific formula(s) to latest Intel-compatible upstream version
@@ -163,8 +163,9 @@ For local maintenance, testing, or manual upstream syncing, use the scripts in `
 ./scripts/build_bottle.sh xz
 FORCE_SOURCE_BUILD=true ./scripts/build_bottle.sh xz
 
-# Mirror and rewrite a Cask locally
+# Mirror and rewrite a Cask locally (auto-restores /opt/homebrew unless SKIP_HOST_RESTORE=true)
 ./scripts/mirror_cask.sh ghostty
+SKIP_HOST_RESTORE=true ./scripts/mirror_cask.sh ghostty
 
 # Force sync and commit changes locally
 ./scripts/sync_formulas.sh --force --commit
@@ -172,8 +173,8 @@ FORCE_SOURCE_BUILD=true ./scripts/build_bottle.sh xz
 # Sync, commit, and push directly to main
 ./scripts/sync_formulas.sh --commit --push
 
-# Run the repository test suite
-for t in tests/test_*.sh; do bash "$t"; done
+# Run the repository test suite explicitly under macOS /bin/bash (Bash 3.2)
+for t in tests/test_*.sh; do /bin/bash "$t"; done
 ```
 
 For technical details on how these scripts resolve dependencies, select Intel-compatible fallbacks, perform binary fast-path mirroring, restore Apple Silicon host state, and deduplicate Homebrew locks, see [ARCHITECTURE.md](ARCHITECTURE.md).
