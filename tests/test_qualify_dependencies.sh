@@ -105,4 +105,83 @@ if echo "$BAR_CONTENT" | grep -Fq 'NAL_TAP_DEDUP'; then
   exit 1
 fi
 
+# 6. Comments and `require` preamble before `class` must be preserved idempotently
+cat <<'EOF' > "$TMP_DIR/Formula/preamble.rb"
+# frozen_string_literal: true
+
+require "language/go"
+
+class Preamble < Formula
+  desc "Formula with preamble"
+  depends_on "bar"
+end
+EOF
+
+bash "$QUALIFY_SCRIPT" --formula-dir "$TMP_DIR/Formula" --tap "jaewoook/nal" preamble
+FIRST_RUN=$(cat "$TMP_DIR/Formula/preamble.rb")
+bash "$QUALIFY_SCRIPT" --formula-dir "$TMP_DIR/Formula" --tap "jaewoook/nal" preamble
+SECOND_RUN=$(cat "$TMP_DIR/Formula/preamble.rb")
+
+if [ "$FIRST_RUN" != "$SECOND_RUN" ]; then
+  echo "Assertion failed: qualify_dependencies.sh is not idempotent with preamble comments/require"
+  exit 1
+fi
+if ! echo "$SECOND_RUN" | grep -Fq 'require "language/go"' || ! head -n 1 "$TMP_DIR/Formula/preamble.rb" | grep -Fq '# frozen_string_literal: true'; then
+  echo "Assertion failed: preamble comment or require was stripped"
+  exit 1
+fi
+if [ "$(grep -cF 'unless Dependency.singleton_class.const_defined?(:NAL_TAP_DEDUP)' "$TMP_DIR/Formula/preamble.rb")" -ne 1 ]; then
+  echo "Assertion failed: duplicate NAL_TAP_DEDUP headers in preamble.rb"
+  exit 1
+fi
+
+# 7. Ruby unit test of the injected Tab.for_keg + FormulaInstaller#install_dependency hook
+if command -v ruby >/dev/null 2>&1; then
+  ruby -e '
+    load_dir = ARGV[0]
+    $LOAD_PATH.unshift(load_dir)
+    # Provide minimal Tab, FormulaInstaller, Dependency, and Formula doubles before loading foo.rb
+    class Dependency; end
+    class Formula
+      def self.method_missing(*); end
+    end
+    class Tab
+      attr_accessor :source
+      def initialize(tap_str)
+        @source = { "tap" => tap_str }
+      end
+      def tap=(v)
+        @source["tap"] = v.to_s
+      end
+      def self.for_keg(_keg)
+        new("homebrew/core")
+      end
+    end
+    class FormulaInstaller
+      attr_reader :seen_tap
+      def install_dependency(_dep, dep_formula)
+        @seen_tap = Tab.for_keg(File.join(dep_formula.rack, "1.0")).source["tap"]
+      end
+    end
+    # Write stub tab.rb and formula_installer.rb in load_dir so require succeeds
+    File.write(File.join(load_dir, "tab.rb"), "# loaded\n")
+    File.write(File.join(load_dir, "formula_installer.rb"), "# loaded\n")
+
+    eval(File.read(ARGV[1]))
+    DepFormula = Struct.new(:tap, :rack)
+    dep_f = DepFormula.new("jaewoook/nal", File.join(load_dir, "Cellar/bar"))
+    fi = FormulaInstaller.new
+    fi.install_dependency(Object.new, dep_f)
+    abort("Expected remapped tap jaewoook/nal, got #{fi.seen_tap.inspect}") unless fi.seen_tap == "jaewoook/nal"
+    outside_tap = Tab.for_keg(File.join(load_dir, "Cellar/bar/1.0")).source["tap"]
+    abort("Expected Tab.for_keg outside super to stay homebrew/core, got #{outside_tap.inspect}") unless outside_tap == "homebrew/core"
+  ' "$TMP_DIR" "$TMP_DIR/Formula/foo.rb"
+fi
+
+# 8. Missing option value should exit non-zero cleanly (not unbound variable)
+if bash "$QUALIFY_SCRIPT" --tap 2>/dev/null; then
+  echo "Assertion failed: --tap without value should fail"
+  exit 1
+fi
+
 echo "All qualify_dependencies tests passed!"

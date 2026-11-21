@@ -11,10 +11,12 @@ TARGETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --formula-dir)
+      [ $# -ge 2 ] || { echo "Error: --formula-dir requires a value" >&2; exit 1; }
       FORMULA_DIR="$2"
       shift 2
       ;;
     --tap)
+      [ $# -ge 2 ] || { echo "Error: --tap requires a value" >&2; exit 1; }
       TAP_NAME="$2"
       shift 2
       ;;
@@ -75,27 +77,52 @@ dedup_header = f"""unless Dependency.singleton_class.const_defined?(:NAL_TAP_DED
   end)
 
   begin
+    require "tab"
+    Tab.singleton_class.prepend(Module.new do
+      def for_keg(keg)
+        tab = super
+        remaps = Thread.current[:nal_tap_remaps]
+        if remaps && !remaps.empty?
+          keg_path = keg.to_s.chomp("/")
+          real_keg = begin
+            File.realpath(keg_path)
+          rescue SystemCallError
+            keg_path
+          end
+          target_tap = remaps[File.dirname(keg_path)] || remaps[File.dirname(real_keg)]
+          if target_tap && tab&.source.is_a?(Hash) && tab.source["tap"] == "homebrew/core"
+            remapped = tab.dup
+            remapped.source = tab.source.merge("tap" => target_tap.to_s)
+            remapped.tap = target_tap if remapped.respond_to?(:tap=)
+            tab = remapped
+          end
+        end
+        tab
+      end
+    end)
+
     require "formula_installer"
     FormulaInstaller.prepend(Module.new do
       def install_dependency(dep, dep_formula = dep.to_formula)
         if dep_formula.tap&.to_s == "{tap_name}"
-          keg_paths = [dep_formula.linked_keg, dep_formula.prefix]
-          keg_paths += dep_formula.rack.subdirs if dep_formula.rack.directory?
-          keg_paths.uniq.each do |keg_path|
-            next unless keg_path&.directory?
-
-            target = keg_path.symlink? ? Utils::Path.resolved_path(keg_path) : keg_path
-            begin
-              keg = Keg.new(target)
-              if keg.tab&.source.is_a?(Hash) && keg.tab.source["tap"] == "homebrew/core"
-                keg.tab.source["tap"] = dep_formula.tap.to_s
-                keg.tab.tap = dep_formula.tap if keg.tab.respond_to?(:tap=)
-              end
-            rescue RuntimeError, SystemCallError, TypeError
-            end
+          prev_remaps = Thread.current[:nal_tap_remaps] || {{}}
+          rack_str = dep_formula.rack.to_s.chomp("/")
+          rack_keys = [rack_str]
+          begin
+            rack_keys << File.realpath(rack_str)
+          rescue SystemCallError
           end
+          remaps = prev_remaps.dup
+          rack_keys.uniq.each {{ |k| remaps[k] = dep_formula.tap }}
+          Thread.current[:nal_tap_remaps] = remaps
+          begin
+            super
+          ensure
+            Thread.current[:nal_tap_remaps] = prev_remaps
+          end
+        else
+          super
         end
-        super
       end
     end)
   rescue LoadError
@@ -105,8 +132,12 @@ end
 """
 
 header_re = re.compile(
-    r'\Aunless Dependency\.singleton_class\.const_defined\?\(:NAL_TAP_DEDUP\)\n.*?\nend\n+(?=\n*(?:class|module)\b)',
-    re.DOTALL
+    r'^unless Dependency\.singleton_class\.const_defined\?\(:NAL_TAP_DEDUP\)\n'
+    r'(?:[ \t]*\n|[ \t]+[^\n]*\n)*?^end\n*',
+    re.MULTILINE
+)
+magic_comment_re = re.compile(
+    r'\A((?:#[^\n]*(?:frozen_string_literal|typed|encoding|warn_indent)[^\n]*\n)+)\n*'
 )
 tap_dep_re = re.compile(r'^(\s*depends_on\s+")' + re.escape(tap_name) + r'/([^"]+)(".*)$')
 plain_dep_re = re.compile(r'^(\s*depends_on\s+")([^"/]+)(".*)$')
@@ -162,7 +193,14 @@ for fname in sorted(os.listdir(formula_dir)):
 
         new_body = ''.join(out_lines)
         if f'depends_on "{tap_name}/' in new_body:
-            new_content = dedup_header + new_body
+            if magic_comment_re.match(new_body):
+                new_content = magic_comment_re.sub(
+                    lambda m: m.group(1) + '\n' + dedup_header,
+                    new_body,
+                    count=1,
+                )
+            else:
+                new_content = dedup_header + new_body
         else:
             new_content = new_body
 
